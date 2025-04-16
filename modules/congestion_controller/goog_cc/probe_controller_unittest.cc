@@ -40,7 +40,7 @@ constexpr int kMaxBitrateBps = 10000;
 
 constexpr int kExponentialProbingTimeoutMs = 5000;
 
-constexpr int kAlrProbeInterval = 5000;
+constexpr int kAlrProbeInterval = 5000; // 探测频率
 constexpr int kAlrEndedTimeoutMs = 3000;
 constexpr int kBitrateDropTimeoutMs = 5000;
 }  // namespace

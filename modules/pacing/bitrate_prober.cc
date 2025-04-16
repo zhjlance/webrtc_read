@@ -77,7 +77,15 @@ void BitrateProber::SetEnabled(bool enable) {
 bool BitrateProber::IsProbing() const {
   return probing_state_ == ProbingState::kActive;
 }
-
+/**
+ * BitrateProber::OnIncomingPacket 函数是 BitrateProber（比特率探测器）类的成员函数，
+ * 主要作用是根据接收到的数据包大小和当前的探测状态，决定是否启动带宽探测。
+ * 
+ * 使用场景：
+ * 在 WebRTC 的带宽探测机制中，当有数据包进入系统时，此函数会被调用，以判断是否满足启动带宽探测的条件。
+ * 它将数据包的相关信息纳入带宽探测的决策逻辑，有助于动态适应网络状况并及时进行带宽评估。
+ * @param packet_size: 入参为当前Rtp包的大小。
+ */
 void BitrateProber::OnIncomingPacket(size_t packet_size) {
   // Don't initialize probing unless we have something large enough to start
   // probing.
@@ -89,27 +97,47 @@ void BitrateProber::OnIncomingPacket(size_t packet_size) {
     probing_state_ = ProbingState::kActive;
   }
 }
-
+/**
+ * 1.函数概述：
+ * 函数是 WebRTC 中用于创建带宽探测簇（probe cluster）的方法。
+ * 带宽探测簇是一组具有相同探测比特率的探测数据包集合，用于测量网络在该比特率下的传输性能
+ * 
+ * 2.使用场景：
+ * 在 WebRTC 的带宽探测机制中，当需要以特定比特率进行带宽探测时，会调用此函数创建相应的探测簇。
+ * 例如，在初始带宽探测阶段，或者在网络状况发生变化后需要重新评估带宽时，都会根据设定的比特率来创建探测簇。
+ */
 void BitrateProber::CreateProbeCluster(DataRate bitrate,
                                        Timestamp now,
                                        int cluster_id) {
+  // 首先确保探测状态不是禁用状态，并且传入的探测比特率大于零。
+  // 这是合理的前提条件，因为如果探测被禁用或者比特率为零，创建探测簇就没有意义。
   RTC_DCHECK(probing_state_ != ProbingState::kDisabled);
   RTC_DCHECK_GT(bitrate, DataRate::Zero());
 
   total_probe_count_++;
+  // 1.过期探测簇清理
+  // 每次创建新的探测簇时，total_probe_count_ 计数增加。同时，检查并清理已经过期的探测簇。
+  // clusters_ 是一个存储探测簇的队列，这里遍历队列头部的探测簇，如果其创建时间距离当前时间 now 超过了
+  //  kProbeClusterTimeout（预设的探测簇超时时间），则将其从队列中移除，并增加失败探测簇计数 total_failed_probe_count_。
+  // 这一步保证了队列中只保留有效的、未过期的探测簇。
   while (!clusters_.empty() &&
          now - clusters_.front().created_at > kProbeClusterTimeout) {
     clusters_.pop();
     total_failed_probe_count_++;
   }
-
+  // 2.创建新的探测簇
+  // 创建一个新的 ProbeCluster 对象 cluster。记录其创建时间为当前时间 now。
+  // 根据配置信息设置最小探测数据包数量 probe_cluster_min_probes，以及根据传入的比特率 bitrate 和
+  // 最小探测时长 config_.min_probe_duration 计算出最小探测字节数 probe_cluster_min_bytes，并确保其不小于零。
+  // 设置探测簇的发送比特率 send_bitrate_bps 和唯一的探测簇 ID probe_cluster_id。
+  // 最后将新创建的探测簇加入到 clusters_ 队列中。
   ProbeCluster cluster;
   cluster.created_at = now;
-  cluster.pace_info.probe_cluster_min_probes = config_.min_probe_packets_sent;
+  cluster.pace_info.probe_cluster_min_probes = config_.min_probe_packets_sent; // 每组探测的最小包数（保证统计显著性）
   cluster.pace_info.probe_cluster_min_bytes =
-      (bitrate * config_.min_probe_duration.Get()).bytes();
+      (bitrate * config_.min_probe_duration.Get()).bytes(); // 每组探测的最小持续时间（计算结果：bitrate * duration = min_bytes）
   RTC_DCHECK_GE(cluster.pace_info.probe_cluster_min_bytes, 0);
-  cluster.pace_info.send_bitrate_bps = bitrate.bps();
+  cluster.pace_info.send_bitrate_bps = bitrate.bps(); // 探测目标码率（激进但可控）
   cluster.pace_info.probe_cluster_id = cluster_id;
   clusters_.push(cluster);
 
@@ -119,6 +147,11 @@ void BitrateProber::CreateProbeCluster(DataRate bitrate,
                    << cluster.pace_info.probe_cluster_min_probes << ")";
   // If we are already probing, continue to do so. Otherwise set it to
   // kInactive and wait for OnIncomingPacket to start the probing.
+  // 3.更新探测状态:
+  // 如果当前探测状态不是活跃状态 kActive，则将其设置为非活跃状态 kInactive。
+  // 这意味着探测尚未真正开始，等待 OnIncomingPacket 函数（可能是接收到某个特定数据包的回调函数）
+  // 来触发实际的探测操作。这种设计使得探测操作可以根据数据包的接收情况灵活启动，
+  // 提高了带宽探测与数据传输流程的协同性。
   if (probing_state_ != ProbingState::kActive)
     probing_state_ = ProbingState::kInactive;
 }

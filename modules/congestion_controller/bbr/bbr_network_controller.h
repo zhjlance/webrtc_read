@@ -129,7 +129,7 @@ class BbrNetworkController : public NetworkControllerInterface {
     DataRate max_bandwidth;
     BbrRoundTripCount round_trip_count;
     int gain_cycle_index;
-    DataSize congestion_window;
+    DataSize congestion_window; // 拥塞窗口值
 
     bool is_at_full_bandwidth;
     DataRate bandwidth_at_last_round;

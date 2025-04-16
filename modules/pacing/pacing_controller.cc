@@ -271,22 +271,49 @@ TimeDelta PacingController::OldestPacketWaitTime() const {
 
   return CurrentTime() - oldest_packet;
 }
-
+/**
+ * 函数概述：
+ *  1.PacingController::EnqueuePacketInternal 函数是 PacingController（速率控制控制器）类的内部函数，
+ *    主要用于将数据包排入队列，并执行与速率控制相关的辅助操作。它处理数据包的入队逻辑，同时与带宽探测功能进行交互。
+ * 
+ * 使用场景：
+ * 1.在 WebRTC 数据传输过程中，当需要将实时传输协议（RTP）数据包发送到网络之前，
+ * 会调用此函数将数据包加入到发送队列中。这个过程会根据当前的速率控制模式以及队列状态进行处理，
+ * 以确保数据包能够按照合适的节奏发送，避免网络拥塞，并配合带宽探测机制优化传输性能。
+ */
 void PacingController::EnqueuePacketInternal(
     std::unique_ptr<RtpPacketToSend> packet,
     int priority) {
+  // 1.带宽探测交互：
+  // 调用 prober_（带宽探测器）的 OnIncomingPacket 方法，并传入当前数据包的有效载荷大小。
+  // 这一步将数据包的信息提供给带宽探测器，以便带宽探测器基于接收到的数据包大小等信息进行带宽估计和相关的探测逻辑。
+  // 例如，带宽探测器可能会根据数据包大小和到达时间间隔来调整对网络带宽的估计。
   prober_.OnIncomingPacket(packet->payload_size());
 
   // TODO(sprang): Make sure tests respect this, replace with DCHECK.
+  // 2.时间戳设置：
+  // 获取当前时间 now。如果数据包的捕获时间 capture_time_ms 为负数（表示未设置或设置错误），则将其设置为当前时间。
+  // 数据包的捕获时间在 WebRTC 的传输过程中有重要意义，它可以用于时间戳排序、抖动计算以及与接收端的同步等操作。
   Timestamp now = CurrentTime();
   if (packet->capture_time_ms() < 0) {
     packet->set_capture_time_ms(now.ms());
   }
-
+  // 3.动态模式下的时间记录：
+  // 当速率控制模式为动态模式（ProcessMode::kDynamic），并且数据包队列 packet_queue_ 为空，
+  // 同时媒体数据负债（media_debt_，可能表示之前未发送完的媒体数据量）为零时，
+  // 记录当前时间到 last_process_time_。这一步主要用于动态速率控制模式下跟踪数据包处理的时间点，以便后续计算发送间隔和速率调整。
+  // 例如，根据 last_process_time_ 和当前时间的差值，以及队列中的数据包大小，
+  // 可以计算出合适的发送速率，以避免网络拥塞并充分利用带宽。
   if (mode_ == ProcessMode::kDynamic && packet_queue_.Empty() &&
       media_debt_ == DataSize::Zero()) {
     last_process_time_ = CurrentTime();
   }
+  // 4.数据包入队：
+  // 将数据包 packet 排入 packet_queue_ 队列中。入队操作不仅将数据包本身放入队列，
+  // 还附带了数据包的优先级 priority、当前时间 now 以及一个递增的数据包计数器 packet_counter_。
+  // 通过这种方式，队列可以根据优先级等信息对数据包进行排序和管理，确保高优先级的数据包能够优先发送，
+  // 从而满足不同类型数据（如关键控制信息、音频或视频数据等）在传输上的不同需求。
+  // std::move 操作将 packet 的所有权转移到队列中，避免不必要的拷贝。
   packet_queue_.Push(priority, now, packet_counter_++, std::move(packet));
 }
 

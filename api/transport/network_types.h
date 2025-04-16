@@ -94,10 +94,15 @@ struct PacedPacketInfo {
 
   // TODO(srte): Move probing info to a separate, optional struct.
   static constexpr int kNotAProbe = -1;
+  // 当前探测簇的目标探测码率
   int send_bitrate_bps = -1;
+  // 当前探测簇的探测id
   int probe_cluster_id = kNotAProbe;
+  // 当前探测簇的最小探测包个数，默认是5个
   int probe_cluster_min_probes = -1;
+  // 当前探测簇最小探测的字节数 = 目标探测码率 * 目标探测时长（默认15ms）
   int probe_cluster_min_bytes = -1;
+  // 当前探测簇实际发送的字节数
   int probe_cluster_bytes_sent = 0;
 };
 
@@ -117,6 +122,7 @@ struct SentPacket {
   // each packet.
   int64_t sequence_number;
   // Tracked data in flight when the packet was sent, excluding unacked data.
+  // 网络中未确认的数据量
   DataSize data_in_flight = DataSize::Zero();
 };
 
@@ -207,13 +213,13 @@ struct PacerConfig {
   DataRate data_rate() const { return data_window / time_window; }
   DataRate pad_rate() const { return pad_window / time_window; }
 };
-
+// 带宽探测配置
 struct ProbeClusterConfig {
   Timestamp at_time = Timestamp::PlusInfinity();
   DataRate target_data_rate = DataRate::Zero();
-  TimeDelta target_duration = TimeDelta::Zero();
-  int32_t target_probe_count = 0;
-  int32_t id = 0;
+  TimeDelta target_duration = TimeDelta::Zero(); // 单词探测的最小持续时间
+  int32_t target_probe_count = 0; // 最小探测包数量
+  int32_t id = 0; // id用于匹配后续的探测结果反馈
 };
 
 struct TargetTransferRate {
