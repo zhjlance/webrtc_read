@@ -1,4 +1,12 @@
 /*
+ * @Author: zhjlance zhanghj0904@163.com
+ * @Date: 2025-04-14 17:07:03
+ * @LastEditors: zhjlance zhanghj0904@163.com
+ * @LastEditTime: 2025-04-22 21:03:45
+ * @FilePath: \src\api\create_peerconnection_factory.cc
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
+/*
  *  Copyright 2018 The WebRTC project authors. All Rights Reserved.
  *
  *  Use of this source code is governed by a BSD-style license
@@ -59,6 +67,7 @@ rtc::scoped_refptr<PeerConnectionFactoryInterface> CreatePeerConnectionFactory(
   media_dependencies.audio_mixer = std::move(audio_mixer);
   media_dependencies.video_encoder_factory = std::move(video_encoder_factory);
   media_dependencies.video_decoder_factory = std::move(video_decoder_factory);
+  // 创建媒体引擎
   dependencies.media_engine =
       cricket::CreateMediaEngine(std::move(media_dependencies));
 

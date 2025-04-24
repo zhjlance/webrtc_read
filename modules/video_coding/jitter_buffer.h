@@ -68,7 +68,11 @@ class FrameList
                                UnorderedFrameList* free_frames);
   void Reset(UnorderedFrameList* free_frames);
 };
-
+/**
+ * 作用：实现抖动缓冲功能，处理网络传输过程中 RTP 数据包到达时间的抖动。
+ * 它会缓存接收到的 RTP 数据包，按照一定的策略重新排序和调整数据包的输出时间，
+ * 以平滑播放视频或音频。WebRTC 提供了不同类型的抖动缓冲实现，如 GenericJitterBuffer 。
+ */
 class VCMJitterBuffer {
  public:
   VCMJitterBuffer(Clock* clock, std::unique_ptr<EventWrapper> event);

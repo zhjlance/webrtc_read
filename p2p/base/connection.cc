@@ -1343,6 +1343,7 @@ int ProxyConnection::Send(const void* data,
                           size_t size,
                           const rtc::PacketOptions& options) {
   stats_.sent_total_packets++;
+  // 最终会从这儿发送出去（UDPPort::SendTo）
   int sent =
       port_->SendTo(data, size, remote_candidate_.address(), options, true);
   if (sent <= 0) {
@@ -1350,6 +1351,7 @@ int ProxyConnection::Send(const void* data,
     error_ = port_->GetError();
     stats_.sent_discarded_packets++;
   } else {
+    // 正常情况下走这儿（统计一些速率）
     send_rate_tracker_.AddSamples(sent);
   }
   return sent;

@@ -165,7 +165,14 @@ class PacedSender : public Module,
     void ProcessThreadAttached(ProcessThread* process_thread) override {
       return delegate_->ProcessThreadAttached(process_thread);
     }
-
+    /**
+     * PacedSender使用私有实现的方式，继承class Module将其接口进行private override，
+     * 保证了对象对外public接口的整洁性，因为这部分逻辑属于类的内部。因为private override
+     * 所以饶了一个圈引入了一个module_proxy和delegate去和process_thread联系？
+     * 
+     * 但实际上private override 一个 public 函数，仍然可以通过基类多态的public调用，
+     * module_proxy_这个圈好像没必要绕
+     */
     PacedSender* const delegate_;
   } module_proxy_{this};
 

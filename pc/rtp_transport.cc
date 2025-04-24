@@ -145,6 +145,7 @@ bool RtpTransport::SendPacket(bool rtcp,
   rtc::PacketTransportInternal* transport = rtcp && !rtcp_mux_enabled_
                                                 ? rtcp_packet_transport_
                                                 : rtp_packet_transport_;
+  // Transport 为DtlsTransport(北极回环测试的时候，一般不开DTLS，直接通过ice_tranport_->SendPacket() 发包)                                       
   int ret = transport->SendPacket(packet->cdata<char>(), packet->size(),
                                   options, flags);
   if (ret != static_cast<int>(packet->size())) {

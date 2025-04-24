@@ -59,6 +59,13 @@ class RtcEventLog;
 // - Generating offers and answers based on the current state.
 // - The ICE state machine.
 // - Generating stats.
+/**
+ * 主要存储一些协商的内容：
+ * 
+ * 代表对等连接的一端，其下有Transceiver数组：
+ * 在Uplan中一个Track对应一个mid，一个mid对应一个Transceiver，每个Transceiver下有一个RtpSender和RtpReceiver，
+ * 用于发送、接收媒体当前mid的媒体，Transceiver属于Uplan，和PlanB下一个mid可能有多个Track是不同的
+ */
 class PeerConnection : public PeerConnectionInternal,
                        public JsepTransportController::Observer,
                        public RtpSenderBase::SetStreamsObserver,

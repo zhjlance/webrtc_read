@@ -1825,7 +1825,9 @@ std::vector<webrtc::RtpSource> WebRtcVideoChannel::GetSources(
   }
   return it->second->GetSources();
 }
-
+/**
+ * 包经过转发来到了MediaChannel，从MediaChannel发往SRtpTransport，ICETransport最终发往网络
+ */
 bool WebRtcVideoChannel::SendRtp(const uint8_t* data,
                                  size_t len,
                                  const webrtc::PacketOptions& options) {
@@ -1839,6 +1841,7 @@ bool WebRtcVideoChannel::SendRtp(const uint8_t* data,
       options.included_in_feedback;
   rtc_options.info_signaled_after_sent.included_in_allocation =
       options.included_in_allocation;
+  // 转发
   return MediaChannel::SendPacket(&packet, rtc_options);
 }
 
@@ -2070,6 +2073,7 @@ void WebRtcVideoChannel::WebRtcVideoSendStream::SetCodec(
   // TODO(nisse): Avoid recreation, it should be enough to call
   // ReconfigureEncoder.
   RTC_LOG(LS_INFO) << "RecreateWebRtcStream (send) because of SetCodec.";
+  // 里面会创建 VideoSendStream
   RecreateWebRtcStream();
 }
 

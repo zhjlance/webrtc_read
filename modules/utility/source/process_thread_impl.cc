@@ -104,7 +104,9 @@ void ProcessThreadImpl::Stop() {
   for (ModuleCallback& m : modules_)
     m.module->ProcessThreadAttached(nullptr);
 }
-
+/**
+ * RtpPacket被投递到paced_controller_之后，会通过这个函数进行唤醒
+ */
 void ProcessThreadImpl::WakeUp(Module* module) {
   // Allowed to be called on any thread.
   {

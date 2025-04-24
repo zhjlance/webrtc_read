@@ -57,6 +57,7 @@ int32_t VCMReceiver::InsertPacket(const VCMPacket& packet) {
   // Insert the packet into the jitter buffer. The packet can either be empty or
   // contain media at this point.
   bool retransmitted = false;
+  // 往JitterBuffer中添加一个packet
   const VCMFrameBufferEnum ret =
       jitter_buffer_.InsertPacket(packet, &retransmitted);
   if (ret == kOldPacket) {

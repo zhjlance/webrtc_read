@@ -88,7 +88,18 @@ RtpSenderEgress::RtpSenderEgress(const RtpRtcp::Configuration& config,
                                    ? std::make_unique<RtpSequenceNumberMap>(
                                          kRtpSequenceNumberMapMaxEntries)
                                    : nullptr) {}
-
+/**
+ * 数据转发最终路径：
+ * 该函数主要做了以下几件事:
+ * 1.将当前packet的timestamp和sequence做了个映射保存下来；
+ * 2.将包拷贝一份之后放到fec中做fec；
+ * 3.给packet设置一个时间扩展，此处提到了一个bug: 当fec包在pacer前做，timestamp会被改变，
+ *   将导致fec恢复包恢复的相关数据包可能出现payload上的问题，所以用了set_pacer_exit_time_ms(now_ms);
+ *   这个bug没看太懂，按道理上面做fec，下面应该不要改包了，还是对fec流程理解的不够深入，有空回头看看；
+ * 4.调用SendPacketToNetwork()转发packet；
+ * 5.将packet放入记录队列packet_history_；
+ * 6.发送成功则调用UpdateRtpStats()更新发送速率等
+ */
 void RtpSenderEgress::SendPacket(RtpPacketToSend* packet,
                                  const PacedPacketInfo& pacing_info) {
   RTC_DCHECK(packet);
@@ -118,7 +129,7 @@ void RtpSenderEgress::SendPacket(RtpPacketToSend* packet,
   {
     rtc::CritScope lock(&lock_);
     options.included_in_allocation = force_part_of_allocation_;
-
+    // 将packet的timestamp,sequence number等保存下来
     if (need_rtp_packet_infos_ &&
         packet->packet_type() == RtpPacketToSend::Type::kVideo) {
       RTC_DCHECK(rtp_sequence_number_map_);
@@ -181,20 +192,23 @@ void RtpSenderEgress::SendPacket(RtpPacketToSend* packet,
     UpdateOnSendPacket(options.packet_id, packet->capture_time_ms(),
                        packet_ssrc);
   }
-
+  // 转发packet
   const bool send_success = SendPacketToNetwork(*packet, options, pacing_info);
 
   // Put packet in retransmission history or update pending status even if
   // actual sending fails.
   if (is_media && packet->allow_retransmission()) {
+    // 放入重传队列
     packet_history_->PutRtpPacket(std::make_unique<RtpPacketToSend>(*packet),
                                   now_ms);
   } else if (packet->retransmitted_sequence_number()) {
+    // 标记此包已重传
     packet_history_->MarkPacketAsSent(*packet->retransmitted_sequence_number());
   }
 
   if (send_success) {
     rtc::CritScope lock(&lock_);
+    // 更新发送速率等内容
     UpdateRtpStats(*packet);
     media_has_been_sent_ = true;
   }
@@ -406,13 +420,17 @@ void RtpSenderEgress::UpdateOnSendPacket(int packet_id,
 
   send_packet_observer_->OnSendPacket(packet_id, capture_time_ms, ssrc);
 }
-
+/**
+ * 转发包
+ * 主要是调用了transport_->SendRtp()转发包，其实调用的是WebRtcVideoChannel::SendRtp()
+ */
 bool RtpSenderEgress::SendPacketToNetwork(const RtpPacketToSend& packet,
                                           const PacketOptions& options,
                                           const PacedPacketInfo& pacing_info) {
   int bytes_sent = -1;
   if (transport_) {
     UpdateRtpOverhead(packet);
+    // 调用transport进行转发
     bytes_sent = transport_->SendRtp(packet.data(), packet.size(), options)
                      ? static_cast<int>(packet.size())
                      : -1;

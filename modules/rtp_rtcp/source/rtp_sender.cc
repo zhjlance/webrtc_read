@@ -443,7 +443,10 @@ bool RTPSender::SendToNetwork(std::unique_ptr<RtpPacketToSend> packet) {
 
   return true;
 }
-
+/**
+ * 将packet投递到pacer中；
+ * packet实际上被投递到pacing_controller_的发送队列中
+ */
 void RTPSender::EnqueuePackets(
     std::vector<std::unique_ptr<RtpPacketToSend>> packets) {
   RTC_DCHECK(!packets.empty());
@@ -456,7 +459,7 @@ void RTPSender::EnqueuePackets(
       packet->set_capture_time_ms(now_ms);
     }
   }
-
+  // 将packet投递到pacer中
   paced_sender_->EnqueuePackets(std::move(packets));
 }
 

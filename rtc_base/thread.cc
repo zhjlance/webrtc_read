@@ -422,7 +422,11 @@ bool Thread::Peek(Message* pmsg, int cmsWait) {
   fPeekKeep_ = true;
   return true;
 }
-
+/**
+ * 从消息队列messages_当中获取消息：
+ * 1.遍历delay_messages_，获取到期消息并放入到messages_队列中
+ * 2.将messages_存在的消息取出，返回出去，如果没有，则break陷入阻塞直到被唤醒
+ */
 bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
   // Return and clear peek if present
   // Always return the peek if it exists so there is Peek/Get symmetry
@@ -453,17 +457,20 @@ bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
         // triggered and calculate the next trigger time.
         if (first_pass) {
           first_pass = false;
+          // 遍历delay message到期消息
           while (!delayed_messages_.empty()) {
             if (msCurrent < delayed_messages_.top().run_time_ms_) {
               cmsDelayNext =
                   TimeDiff(delayed_messages_.top().run_time_ms_, msCurrent);
               break;
             }
+            // 将到期消息移动到messages_队列中
             messages_.push_back(delayed_messages_.top().msg_);
             delayed_messages_.pop();
           }
         }
         // Pull a message off the message queue, if available.
+        // 获取messages_任务
         if (messages_.empty()) {
           break;
         } else {
@@ -498,6 +505,7 @@ bool Thread::Get(Message* pmsg, int cmsWait, bool process_io) {
 
     {
       // Wait and multiplex in the meantime
+      // 阻塞直到消息来
       if (!ss_->Wait(static_cast<int>(cmsNext), process_io))
         return false;
     }
@@ -528,7 +536,7 @@ void Thread::Post(const Location& posted_from,
   // Keep thread safe
   // Add the message to the end of the queue
   // Signal for the multiplexer to return
-
+  // 将QueueTask 封装成 rtc::message 放到message队列中
   {
     CritScope cs(&crit_);
     Message msg;
@@ -538,6 +546,7 @@ void Thread::Post(const Location& posted_from,
     msg.pdata = pdata;
     messages_.push_back(msg);
   }
+  // 唤醒this线程消费任务
   WakeUpSocketServer();
 }
 
@@ -655,12 +664,15 @@ void Thread::ClearInternal(MessageHandler* phandler,
                                       delayed_messages_.container().end());
   delayed_messages_.reheap();
 }
-
+/**
+ * 当消息被获取出，就调用dispatch()然后执行，至此，任务就被执行完成了
+ */
 void Thread::Dispatch(Message* pmsg) {
   TRACE_EVENT2("webrtc", "Thread::Dispatch", "src_file",
                pmsg->posted_from.file_name(), "src_func",
                pmsg->posted_from.function_name());
   int64_t start_time = TimeMillis();
+  // 执行
   pmsg->phandler->OnMessage(pmsg);
   int64_t end_time = TimeMillis();
   int64_t diff = TimeDiff(end_time, start_time);
@@ -839,6 +851,7 @@ void* Thread::PreRun(void* pv) {
 }  // namespace rtc
 
 void Thread::Run() {
+  // 消费流程
   ProcessMessages(kForever);
 }
 
@@ -851,7 +864,10 @@ void Thread::Stop() {
   Thread::Quit();
   Join();
 }
-
+/**
+ * 在Thread::Send()函数中有非常多的细节，首先会判断当前线程和this线程是否相同，
+ * 是就直接执行，否则生成一个QueueTask 投递到this线程的队列中去
+ */
 void Thread::Send(const Location& posted_from,
                   MessageHandler* phandler,
                   uint32_t id,
@@ -863,18 +879,20 @@ void Thread::Send(const Location& posted_from,
   // Sent messages are sent to the MessageHandler directly, in the context
   // of "thread", like Win32 SendMessage. If in the right context,
   // call the handler directly.
+  // 构造msg
   Message msg;
   msg.posted_from = posted_from;
   msg.phandler = phandler;
   msg.message_id = id;
   msg.pdata = pdata;
+  // 如果当前线程就是this线程，直接执行任务
   if (IsCurrent()) {
     msg.phandler->OnMessage(&msg);
     return;
   }
 
   AssertBlockingIsAllowedOnCurrentThread();
-
+  // 获取当前线程
   AutoThread thread;
   Thread* current_thread = Thread::Current();
   RTC_DCHECK(current_thread != nullptr);  // AutoThread ensures this
@@ -882,17 +900,19 @@ void Thread::Send(const Location& posted_from,
   ThreadManager::Instance()->RegisterSendAndCheckForCycles(current_thread,
                                                            this);
 #endif
+  // 将msg封装成QueueTask，放到线程队列中(主流程)
   bool ready = false;
   PostTask(
       webrtc::ToQueuedTask([msg]() mutable { msg.phandler->OnMessage(&msg); },
                            [this, &ready, current_thread] {
                              CritScope cs(&crit_);
                              ready = true;
-                             current_thread->socketserver()->WakeUp();
+                             current_thread->socketserver()->WakeUp(); // 唤醒
                            }));
-
+  // 当前的thread是google thread
   bool waited = false;
   crit_.Enter();
+  // 任务没有完成，阻塞等到任务完成被唤醒
   while (!ready) {
     crit_.Leave();
     current_thread->socketserver()->Wait(kForever, false);
@@ -913,6 +933,14 @@ void Thread::Send(const Location& posted_from,
   // won't be processed in a timely manner.
 
   if (waited) {
+     // socketserver有两个使用场景
+    // 1.像这种给别的线程投递了阻塞任务后，进行wait等到执行完毕
+    // 2.Thread::Get()函数中获取消息的时候，如果获取不到就会陷入永久的wait直到被wakup()
+    // 对于第二点，此处提到了一个问题，A向B投递了一个阻塞任务task1后wait等待结果，此时别的线程
+    // 向A的队列投递了一个任务task1，投递的时候会有wakeup()的操作，那么上面检测ready的loop会把
+    // 这个wakeup()给吃掉，当任务完成时，由于wakeup被吃掉了，导致线程获取task得时候会陷入wait
+    // 无法及时处理task，(表述上确实如此，但代码上看似乎没有这样得问题，因为是先检测队列是否为空
+    // 再继续wait的)
     current_thread->socketserver()->WakeUp();
   }
 }
@@ -930,11 +958,15 @@ void Thread::InvokeInternal(const Location& posted_from,
 
    private:
     rtc::FunctionView<void()> functor_;
+    // 将funtor转化为Msg handler
   } handler(functor);
-
+  // 发送到this线程队列中
   Send(posted_from, &handler);
 }
-
+/**
+ * 调用QueuedTaskHandler::OnMessage()，从msg->pdata中还原成QueueTask运行，
+ * 然后release释放掉
+ */
 void Thread::QueuedTaskHandler::OnMessage(Message* msg) {
   RTC_DCHECK(msg);
   auto* data = static_cast<ScopedMessageData<webrtc::QueuedTask>*>(msg->pdata);
@@ -945,10 +977,15 @@ void Thread::QueuedTaskHandler::OnMessage(Message* msg) {
 
   // QueuedTask interface uses Run return value to communicate who owns the
   // task. false means QueuedTask took the ownership.
+  // 运行之后释放
   if (!task->Run())
     task.release();
 }
 
+/**
+ * PostTask()内部直接调用了POST()， 在POST()中把msg再次封装成一个rtc::message然后投递到this线程的
+ * 任务队列messages_中，然后执行WakeUpSocketServer() 唤醒this线程消费任务，至此，任务的投递过程就完成了
+ */
 void Thread::PostTask(std::unique_ptr<webrtc::QueuedTask> task) {
   // Though Post takes MessageData by raw pointer (last parameter), it still
   // takes it with ownership.
@@ -980,7 +1017,9 @@ void Thread::Clear(MessageHandler* phandler,
   CritScope cs(&crit_);
   ClearInternal(phandler, id, removed);
 }
-
+/**
+ * 消费task
+ */
 bool Thread::ProcessMessages(int cmsLoop) {
   // Using ProcessMessages with a custom clock for testing and a time greater
   // than 0 doesn't work, since it's not guaranteed to advance the custom
@@ -994,9 +1033,12 @@ bool Thread::ProcessMessages(int cmsLoop) {
 #if defined(WEBRTC_MAC)
     ScopedAutoReleasePool pool;
 #endif
+    // 从消息队列获取消息
     Message msg;
     if (!Get(&msg, cmsNext))
       return !IsQuitting();
+
+    // 分发处理
     Dispatch(&msg);
 
     if (cmsLoop != kForever) {

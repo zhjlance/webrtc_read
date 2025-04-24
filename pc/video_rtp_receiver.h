@@ -35,7 +35,11 @@
 #include "rtc_base/thread.h"
 
 namespace webrtc {
-
+/**
+ * 视频接收类
+ * 作用：负责从网络接收 RTP 数据包。它与网络传输层交互，
+ * 接收并处理网络上传输过来的 RTP 数据包，为后续的抖动缓冲和 RTP 解析提供数据来源。
+ */
 class VideoRtpReceiver : public rtc::RefCountedObject<RtpReceiverInternal>,
                          public VideoRtpTrackSource::Callback {
  public:
@@ -102,7 +106,7 @@ class VideoRtpReceiver : public rtc::RefCountedObject<RtpReceiverInternal>,
                       streams) override;
 
   void SetObserver(RtpReceiverObserverInterface* observer) override;
-
+  // 设置jitter buffer最小延迟
   void SetJitterBufferMinimumDelay(
       absl::optional<double> delay_seconds) override;
 

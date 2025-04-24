@@ -174,7 +174,7 @@ class VideoSendStreamImpl : public webrtc::BitrateAllocatorObserver,
   uint32_t encoder_target_rate_bps_;
   double encoder_bitrate_priority_;
   bool has_packet_feedback_;
-
+  // 负责视频编码的类，从媒体源获取视频帧，然后进行编码，类为class VideoStreamEncoder
   VideoStreamEncoderInterface* const video_stream_encoder_;
   EncoderRtcpFeedback encoder_feedback_;
 
@@ -192,8 +192,11 @@ class VideoSendStreamImpl : public webrtc::BitrateAllocatorObserver,
   // Context for the most recent and last sent video bitrate allocation. Used to
   // throttle sending of similar bitrate allocations.
   struct VbaSendContext {
+    // 上一次分配的码率
     VideoBitrateAllocation last_sent_allocation;
+    // 对频繁更新进行节流的分配码率
     absl::optional<VideoBitrateAllocation> throttled_allocation;
+    // 上次发送的时间
     int64_t last_send_time_ms;
   };
   absl::optional<VbaSendContext> video_bitrate_allocation_context_

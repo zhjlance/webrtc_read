@@ -1455,6 +1455,7 @@ bool PeerConnection::AddStream(MediaStreamInterface* local_stream) {
   }
 
   local_streams_->AddStream(local_stream);
+  // 观察者开始定于音视频Track添加事件
   MediaStreamObserver* observer = new MediaStreamObserver(local_stream);
   observer->SignalAudioTrackAdded.connect(this,
                                           &PeerConnection::OnAudioTrackAdded);
@@ -1506,7 +1507,14 @@ void PeerConnection::RemoveStream(MediaStreamInterface* local_stream) {
   }
   UpdateNegotiationNeeded();
 }
-
+/**
+ * Conductor的AddTracks最终会走到这儿：
+ * 这是 WebRTC 中用于将音视频轨道（MediaStreamTrack）添加到对等连接（PeerConnection）
+ * 的关键函数，返回一个 RTP 发送器（RtpSenderInterface）或错误。
+ * 
+ * @param track：音视频轨道的智能指针（scoped_refptr 管理生命周期）。
+ * @param stream_ids：轨道所属的媒体流 ID 列表（用于多流场景）。
+ */
 RTCErrorOr<rtc::scoped_refptr<RtpSenderInterface>> PeerConnection::AddTrack(
     rtc::scoped_refptr<MediaStreamTrackInterface> track,
     const std::vector<std::string>& stream_ids) {
@@ -1529,6 +1537,7 @@ RTCErrorOr<rtc::scoped_refptr<RtpSenderInterface>> PeerConnection::AddTrack(
         RTCErrorType::INVALID_PARAMETER,
         "Sender already exists for track " + track->id() + ".");
   }
+  // 关注UnifiedPlan即可
   auto sender_or_error =
       (IsUnifiedPlan() ? AddTrackUnifiedPlan(track, stream_ids)
                        : AddTrackPlanB(track, stream_ids));
@@ -1580,12 +1589,16 @@ PeerConnection::AddTrackPlanB(
   }
   return rtc::scoped_refptr<RtpSenderInterface>(new_sender);
 }
-
+/**
+ * UnifiedPlan计划
+ */
 RTCErrorOr<rtc::scoped_refptr<RtpSenderInterface>>
 PeerConnection::AddTrackUnifiedPlan(
     rtc::scoped_refptr<MediaStreamTrackInterface> track,
     const std::vector<std::string>& stream_ids) {
+  // 找到tranceiver
   auto transceiver = FindFirstTransceiverForAddedTrack(track);
+  // 之前已经创建过，走这儿
   if (transceiver) {
     RTC_LOG(LS_INFO) << "Reusing an existing "
                      << cricket::MediaTypeToString(transceiver->media_type())
@@ -1601,6 +1614,7 @@ PeerConnection::AddTrackUnifiedPlan(
     transceiver->internal()->sender_internal()->set_stream_ids(stream_ids);
     transceiver->internal()->set_reused_for_addtrack(true);
   } else {
+    // transceiver没有创建成功，需要重新创建
     cricket::MediaType media_type =
         (track->kind() == MediaStreamTrackInterface::kAudioKind
              ? cricket::MEDIA_TYPE_AUDIO
@@ -1614,8 +1628,10 @@ PeerConnection::AddTrackUnifiedPlan(
     if (FindSenderById(sender_id)) {
       sender_id = rtc::CreateRandomUuid();
     }
+    // 创建sender和receiver，并添加到transceiver当中去
     auto sender = CreateSender(media_type, sender_id, track, stream_ids, {});
     auto receiver = CreateReceiver(media_type, rtc::CreateRandomUuid());
+    // 走这儿去创建一个Transceiver
     transceiver = CreateAndAddTransceiver(sender, receiver);
     transceiver->internal()->set_created_by_addtrack(true);
     transceiver->internal()->set_direction(RtpTransceiverDirection::kSendRecv);
@@ -1623,6 +1639,10 @@ PeerConnection::AddTrackUnifiedPlan(
   return transceiver->sender();
 }
 
+/**
+ * 查找匹配新轨道的可用 Transceiver 的函数，
+ * 通常在调用 AddTrack 时为新轨道分配或复用现有的 RtpTransceiver
+ */
 rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>
 PeerConnection::FindFirstTransceiverForAddedTrack(
     rtc::scoped_refptr<MediaStreamTrackInterface> track) {
@@ -1631,6 +1651,8 @@ PeerConnection::FindFirstTransceiverForAddedTrack(
     if (!transceiver->sender()->track() &&
         cricket::MediaTypeToString(transceiver->media_type()) ==
             track->kind() &&
+        // 防止状态污染：从未发送过数据的 Transceiver 是“干净的”，适合直接绑定新轨道。
+        // 若已发送过数据，其底层通道（Channel）可能残留编解码器或网络状态，需新建 Transceiver。
         !transceiver->internal()->has_ever_been_used_to_send() &&
         !transceiver->stopped()) {
       return transceiver;
@@ -1907,7 +1929,7 @@ PeerConnection::CreateAndAddTransceiver(
   RTC_DCHECK(!FindSenderById(sender->id()));
   auto transceiver = RtpTransceiverProxyWithInternal<RtpTransceiver>::Create(
       signaling_thread(),
-      new RtpTransceiver(
+      new RtpTransceiver( // 创建一个Transceiver
           sender, receiver, channel_manager(),
           sender->media_type() == cricket::MEDIA_TYPE_AUDIO
               ? channel_manager()->GetSupportedAudioRtpHeaderExtensions()
@@ -2528,7 +2550,9 @@ void PeerConnection::SetLocalDescription(
         }
       });
 }
-
+/**
+ * 开始发起协商之后，首先将自己Local Description通过这个函数应用下
+ */
 void PeerConnection::DoSetLocalDescription(
     std::unique_ptr<SessionDescriptionInterface> desc,
     rtc::scoped_refptr<SetSessionDescriptionObserver> observer) {
@@ -2589,7 +2613,7 @@ void PeerConnection::DoSetLocalDescription(
   // Grab the description type before moving ownership to ApplyLocalDescription,
   // which may destroy it before returning.
   const SdpType type = desc->GetType();
-
+  // 本地媒体协商的Offer SDP（里面会创建Channel）
   error = ApplyLocalDescription(std::move(desc));
   // |desc| may be destroyed at this point.
 
@@ -2637,6 +2661,9 @@ void PeerConnection::DoSetLocalDescription(
   NoteUsageEvent(UsageEvent::SET_LOCAL_DESCRIPTION_SUCCEEDED);
 }
 
+/**
+ * 应用本地的协商结果
+ */
 RTCError PeerConnection::ApplyLocalDescription(
     std::unique_ptr<SessionDescriptionInterface> desc) {
   RTC_DCHECK_RUN_ON(signaling_thread());
@@ -2690,6 +2717,7 @@ RTCError PeerConnection::ApplyLocalDescription(
   }
 
   if (IsUnifiedPlan()) {
+    // 更新Transceiver和Channel
     RTCError error = UpdateTransceiversAndDataChannels(
         cricket::CS_LOCAL, *local_description(), old_local_description,
         remote_description());
@@ -2750,6 +2778,7 @@ RTCError PeerConnection::ApplyLocalDescription(
     if (type == SdpType::kOffer) {
       // TODO(bugs.webrtc.org/4676) - Handle CreateChannel failure, as new local
       // description is applied. Restore back to old description.
+      // 媒体协商的时候，根据本地的Offer，创建一个Video Channel（有可能还有音频）
       RTCError error = CreateChannels(*local_description()->description());
       if (!error.ok()) {
         return error;
@@ -3494,6 +3523,14 @@ void PeerConnection::RemoveRemoteStreamsIfEmpty(
   }
 }
 
+/**
+ * 根据新的会话描述（SessionDescriptionInterface）来更新 PeerConnection 中的收发器（Transceiver）和数据通道（DataChannel）
+ * 
+ * @param source：内容源，用于标识更新的来源。
+ * @param new_session：新的会话描述，包含了更新后的媒体和连接信息。
+ * @param old_local_description：旧的本地会话描述，用于对比和确定需要更新的内容。
+ * @param old_remote_description：旧的远程会话描述，同样用于对比和确定需要更新的内容。
+ */
 RTCError PeerConnection::UpdateTransceiversAndDataChannels(
     cricket::ContentSource source,
     const SessionDescriptionInterface& new_session,
@@ -3537,6 +3574,7 @@ RTCError PeerConnection::UpdateTransceiversAndDataChannels(
         return transceiver_or_error.MoveError();
       }
       auto transceiver = transceiver_or_error.MoveValue();
+      // 更新收发器(Transceiver)的通道，可能包括设置编解码器、配置传输参数等，同时考虑捆绑组信息。
       RTCError error =
           UpdateTransceiverChannel(transceiver, new_content, bundle_group);
       if (!error.ok()) {
@@ -3561,7 +3599,10 @@ RTCError PeerConnection::UpdateTransceiversAndDataChannels(
 
   return RTCError::OK();
 }
-
+/**
+ * 主要负责根据给定的 ContentInfo 信息来更新 RtpTransceiver 关联的通道（ChannelInterface）。
+ * 它会根据内容是否被拒绝（content.rejected）来决定是销毁现有通道还是创建新通道，并将其与 RtpTransceiver 进行关联
+ */
 RTCError PeerConnection::UpdateTransceiverChannel(
     rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>
         transceiver,
@@ -3569,18 +3610,24 @@ RTCError PeerConnection::UpdateTransceiverChannel(
     const cricket::ContentGroup* bundle_group) {
   RTC_DCHECK(IsUnifiedPlan());
   RTC_DCHECK(transceiver);
+  // 获取当前 RtpTransceiver 内部关联的通道
   cricket::ChannelInterface* channel = transceiver->internal()->channel();
+  // 处理被拒绝的内容
   if (content.rejected) {
     if (channel) {
+      // 将 RtpTransceiver 内部关联的通道设置为 nullptr，断开与现有通道的连接。销毁通道
       transceiver->internal()->SetChannel(nullptr);
       DestroyChannelInterface(channel);
     }
   } else {
+    // 处理未被拒绝的内容
     if (!channel) {
       if (transceiver->media_type() == cricket::MEDIA_TYPE_AUDIO) {
         channel = CreateVoiceChannel(content.name);
       } else {
+        // 确认媒体类型是Video
         RTC_DCHECK_EQ(cricket::MEDIA_TYPE_VIDEO, transceiver->media_type());
+        // 创建视频通道，通道名称是content.name
         channel = CreateVideoChannel(content.name);
       }
       if (!channel) {
@@ -6566,7 +6613,9 @@ RTCErrorOr<const cricket::ContentGroup*> PeerConnection::GetEarlyBundleGroup(
   }
   return bundle_group;
 }
-
+/**
+ * 创建音视频通道
+ */
 RTCError PeerConnection::CreateChannels(const SessionDescription& desc) {
   // Creating the media channels. Transports should already have been created
   // at this point.
@@ -6584,6 +6633,7 @@ RTCError PeerConnection::CreateChannels(const SessionDescription& desc) {
   const cricket::ContentInfo* video = cricket::GetFirstVideoContent(&desc);
   if (video && !video->rejected &&
       !GetVideoTransceiver()->internal()->channel()) {
+    // 创建Video Channel的地方，首先发起童话会走到这儿
     cricket::VideoChannel* video_channel = CreateVideoChannel(video->name);
     if (!video_channel) {
       LOG_AND_RETURN_ERROR(RTCErrorType::INTERNAL_ERROR,
@@ -6629,24 +6679,52 @@ cricket::VoiceChannel* PeerConnection::CreateVoiceChannel(
 }
 
 // TODO(steveanton): Perhaps this should be managed by the RtpTransceiver.
+/**
+ * 创建视频通道，通道名称是mid
+ * 
+ * 1、视频通道创建：通过channel_manager实例化视频通道
+ * 2、传输层配置：关联RTP传输和媒体传输配置
+ * 3、信号连接：设置关键事件回调
+ */
 cricket::VideoChannel* PeerConnection::CreateVideoChannel(
     const std::string& mid) {
-  RtpTransportInternal* rtp_transport = GetRtpTransport(mid);
+  // 1.获取传输层配置
+  // RTP传输：根据MID获取对应的RTP传输通道对象
+  // 媒体传输配置：从传输控制器获取完整传输配置
+  RtpTransportInternal* rtp_transport = GetRtpTransport(mid); 
   MediaTransportConfig media_transport_config =
       transport_controller_->GetMediaTransportConfig(mid);
 
+  // 2.创建视频通道：
+  // call_ptr_：可能是指向 Call 对象的指针，Call 对象在 WebRTC 中通常
+  //            用于管理一次完整的通话会话，它包含了与通话相关的各种状态和操作。
+  // configuration_.media_config：媒体配置参数集合，包含了通用的媒体相关设置，例如编解码器的选择、视频分辨率等。
+  // rtp_transport：前面获取的 RTP 传输对象，用于实际的视频数据传输。
+  // media_transport_config：前面获取的媒体传输配置。
+  // SrtpRequired：指示是否需要进行SRTP加密
+  // ssrc_generator_：SSRC生成器（流标识符管理）
+  // video_options_：视频编码/处理特定选项
+  // video_bitrate_allocator_factory_：视频码率分配器工厂对象
   cricket::VideoChannel* video_channel = channel_manager()->CreateVideoChannel(
       call_ptr_, configuration_.media_config, rtp_transport,
       media_transport_config, signaling_thread(), mid, SrtpRequired(),
       GetCryptoOptions(), &ssrc_generator_, video_options_,
       video_bitrate_allocator_factory_.get());
   if (!video_channel) {
+    // 通道创建失败立即返回
     return nullptr;
   }
+  // 3.信号连接
+  // 安全连接失败信号：DTLS-SRTP协商失败时触发
   video_channel->SignalDtlsSrtpSetupFailure.connect(
       this, &PeerConnection::OnDtlsSrtpSetupFailure);
+  // 视频通道成功发送一个数据包时，会触发这个槽函数，PeerConnection 可以借此进行一些统计或其他相关操作
   video_channel->SignalSentPacket.connect(this,
                                           &PeerConnection::OnSentPacket_w);
+  // 4.设置 RTP 传输对象：
+  // 1）将之前获取的 RTP 传输对象设置到视频通道中，完成视频通道与 RTP 传输的绑定，
+  //    使得视频通道可以通过这个 RTP 传输对象来发送和接收视频数据。
+  // 2）在ICE连接建立后会实际激活传输
   video_channel->SetRtpTransport(rtp_transport);
 
   return video_channel;

@@ -307,13 +307,14 @@ PeerConnectionFactory::CreateLocalMediaStream(const std::string& stream_id) {
   return MediaStreamProxy::Create(signaling_thread_,
                                   MediaStream::Create(stream_id));
 }
-
+// 创建视频Track
 rtc::scoped_refptr<VideoTrackInterface> PeerConnectionFactory::CreateVideoTrack(
     const std::string& id,
     VideoTrackSourceInterface* source) {
   RTC_DCHECK(signaling_thread_->IsCurrent());
   rtc::scoped_refptr<VideoTrackInterface> track(
       VideoTrack::Create(id, source, worker_thread_));
+  // 这种代理是为了保证在正确线程执行，理解成VideoTrack就行了
   return VideoTrackProxy::Create(signaling_thread_, worker_thread_, track);
 }
 

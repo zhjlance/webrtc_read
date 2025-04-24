@@ -235,7 +235,9 @@ void ChannelManager::DestroyVoiceChannel(VoiceChannel* voice_channel) {
 
   voice_channels_.erase(it);
 }
-
+/**
+ * 里面会创建VideoChannel
+ */
 VideoChannel* ChannelManager::CreateVideoChannel(
     webrtc::Call* call,
     const cricket::MediaConfig& media_config,
@@ -263,7 +265,7 @@ VideoChannel* ChannelManager::CreateVideoChannel(
   if (!media_engine_) {
     return nullptr;
   }
-
+  // 创建VideoChannel
   VideoMediaChannel* media_channel = media_engine_->video().CreateMediaChannel(
       call, media_config, options, crypto_options,
       video_bitrate_allocator_factory);

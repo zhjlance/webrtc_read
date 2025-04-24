@@ -40,12 +40,13 @@ class ProcessThreadImpl : public ProcessThread {
   void PostTask(std::unique_ptr<QueuedTask> task) override;
   void PostDelayedTask(std::unique_ptr<QueuedTask> task,
                        uint32_t milliseconds) override;
-
+  // 将一个Module添加进来
   void RegisterModule(Module* module, const rtc::Location& from) override;
   void DeRegisterModule(Module* module) override;
 
  protected:
   static void Run(void* obj);
+  // 对Process()进行override后，使用ProcessThread::WakeUp(module)则会唤醒去调用Process()
   bool Process();
 
  private:

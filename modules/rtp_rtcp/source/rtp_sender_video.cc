@@ -172,6 +172,9 @@ RTPSenderVideo::~RTPSenderVideo() {
     frame_transformer_delegate_->Reset();
 }
 
+/**
+ * 将rtp packet转发到pacer
+ */
 void RTPSenderVideo::LogAndSendToNetwork(
     std::vector<std::unique_ptr<RtpPacketToSend>> packets,
     size_t unpacketized_payload_size) {
@@ -196,13 +199,14 @@ void RTPSenderVideo::LogAndSendToNetwork(
       }
     }
     // AV1 packetizer may produce less packetized bytes than unpacketized.
+    // 统计打包后的payload的码率开销
     if (packetized_payload_size >= unpacketized_payload_size) {
       packetization_overhead_bitrate_.Update(
           packetized_payload_size - unpacketized_payload_size,
           clock_->TimeInMilliseconds());
     }
   }
-
+  // 将packet投递到pacer中
   rtp_sender_->EnqueuePackets(std::move(packets));
 }
 
@@ -412,7 +416,20 @@ void RTPSenderVideo::AddRtpHeaderExtensions(
     }
   }
 }
-
+/**
+ * 主要工作从video_header解析出相关信息用于该帧rtp_packet初始化：
+ * 1.调用MaybeUpdateCurrentPlayoutDelay()解析video_header，看是否需要延迟播放，修正延迟播放时间；
+ * 2.由于payload可能超过一个rtp packet size，需要分包，引入了单包：single_packet，
+ *   分包: first_packet, middle_packet, last_packet 两种情况；
+ * 3.使用AddRtpHeaderExtensions()从video_header解析出rtp扩展，设置到rtp_packet中；
+ * 4.如果启用帧加密，调用frame_encryptor_->Encrypt()对帧和rtp扩展进行加密；
+ * 5.使用video_header, payload_type, 等生成Rtp打包器RtpPacketizer，RtpPacketizer将payload内容填充到rtp packet中；
+ * 6.设置packet是否使用fec；
+ * 7.如果enable red封装(详见rfc2198)，使用BuildRedPayload()对payload进行red封装(就是在media payload前添加一个red header), 
+ *   然后设置packet的payload_type；
+ * 8.使用AssignSequenceNumbersAndStoreLastPacketState()对packet设置sequence；
+ * 9.通过LogAndSendToNetwork()将rtp packet转发到pacer
+ */
 bool RTPSenderVideo::SendVideo(
     int payload_type,
     absl::optional<VideoCodecType> codec_type,
@@ -439,7 +456,7 @@ bool RTPSenderVideo::SendVideo(
     // Backward compatibility for older receivers without temporal layer logic.
     retransmission_settings = kRetransmitBaseLayer | kRetransmitHigherLayers;
   }
-
+  // 根据video_header信息，更新播放延迟(current_playout_delay_)
   MaybeUpdateCurrentPlayoutDelay(video_header);
   if (video_header.frame_type == VideoFrameType::kVideoFrameKey &&
       !IsNoopDelay(current_playout_delay_)) {
@@ -449,9 +466,11 @@ bool RTPSenderVideo::SendVideo(
 
   // Maximum size of packet including rtp headers.
   // Extra space left in case packet will be resent using fec or rtx.
+  // 计算去除了fec和rtx头之后，packet所剩的容量
   int packet_capacity = rtp_sender_->MaxRtpPacketSize() - FecPacketOverhead() -
                         (rtp_sender_->RtxStatus() ? kRtxHeaderSize : 0);
 
+  // 构造packet,设置payload_type, timstamp
   std::unique_ptr<RtpPacketToSend> single_packet =
       rtp_sender_->AllocatePacket();
   RTC_DCHECK_LE(packet_capacity, single_packet->capacity());
@@ -471,6 +490,7 @@ bool RTPSenderVideo::SendVideo(
   auto middle_packet = std::make_unique<RtpPacketToSend>(*single_packet);
   auto last_packet = std::make_unique<RtpPacketToSend>(*single_packet);
   // Simplest way to estimate how much extensions would occupy is to set them.
+  // 根据video_header 给packet添加extension
   AddRtpHeaderExtensions(video_header, absolute_capture_time,
                          /*first_packet=*/true, /*last_packet=*/true,
                          single_packet.get());
@@ -525,12 +545,13 @@ bool RTPSenderVideo::SendVideo(
   }
 
   // TODO(benwright@webrtc.org) - Allocate enough to always encrypt inline.
+  // 如果帧加密了，对payload和header进行加密
   rtc::Buffer encrypted_video_payload;
   if (frame_encryptor_ != nullptr) {
     if (!has_generic_descriptor) {
       return false;
     }
-
+    // 获取帧加密后最大的长度
     const size_t max_ciphertext_size =
         frame_encryptor_->GetMaxCiphertextByteSize(cricket::MEDIA_TYPE_VIDEO,
                                                    payload.size());
@@ -557,13 +578,15 @@ bool RTPSenderVideo::SendVideo(
         << "No FrameEncryptor is attached to this video sending stream but "
            "one is required since require_frame_encryptor is set";
   }
-
+  // 将H264分片并打包成RTP数据包
   std::unique_ptr<RtpPacketizer> packetizer = RtpPacketizer::Create(
       codec_type, payload, limits, video_header, fragmentation);
 
   // TODO(bugs.webrtc.org/10714): retransmission_settings_ should generally be
   // replaced by expected_retransmission_time_ms.has_value(). For now, though,
   // only VP8 with an injected frame buffer controller actually controls it.
+  // RTX的重传精细到帧
+  // 检查上层是否设置了允许重传的时间(default:125ms)从而设置该帧允许重传
   const bool allow_retransmission =
       expected_retransmission_time_ms.has_value()
           ? AllowRetransmission(temporal_id, retransmission_settings,
@@ -617,7 +640,7 @@ bool RTPSenderVideo::SendVideo(
 
     // No FEC protection for upper temporal layers, if used.
     bool protect_packet = temporal_id == 0 || temporal_id == kNoTemporalIdx;
-
+    // 设置重传，关键帧
     packet->set_allow_retransmission(allow_retransmission);
 
     // Put packetization finish timestamp into extension.
@@ -633,6 +656,7 @@ bool RTPSenderVideo::SendVideo(
         // conjunction with datagram transport.
         // TODO(sukhanov): We may also need to implement it for flexfec_sender
         // if we decide to keep this approach in the future.
+        // 如果启用了red封装，重新对payload进行red封装后，将包设置程redpacket
         uint16_t transport_senquence_number;
         if (packet->GetExtension<webrtc::TransportSequenceNumber>(
                 &transport_senquence_number)) {
@@ -643,7 +667,7 @@ bool RTPSenderVideo::SendVideo(
           }
         }
       }
-
+      // 对包做fec
       fec_generator_->AddPacketAndGenerateFec(*packet);
     }
 
@@ -683,12 +707,13 @@ bool RTPSenderVideo::SendVideo(
     const bool generate_sequence_numbers = !fec_generator_->FecSsrc();
     for (auto& fec_packet : fec_packets) {
       if (generate_sequence_numbers) {
+        // 设置sequence
         rtp_sender_->AssignSequenceNumber(fec_packet.get());
       }
       rtp_packets.emplace_back(std::move(fec_packet));
     }
   }
-
+  // 转发到Pacer
   LogAndSendToNetwork(std::move(rtp_packets), unpacketized_payload_size);
 
   // Update details about the last sent frame.
@@ -701,7 +726,8 @@ bool RTPSenderVideo::SendVideo(
     transmit_color_space_next_frame_ =
         transmit_color_space_next_frame_ ? !IsBaseLayer(video_header) : false;
   }
-
+  // 复位delay设置，delay是由video_header决定的，之前解析的时候设置了playout_delay_pending_
+  // 为true，此处对它进行复位
   if (video_header.frame_type == VideoFrameType::kVideoFrameKey ||
       (IsBaseLayer(video_header) &&
        !(video_header.generic.has_value() ? video_header.generic->discardable
@@ -715,7 +741,11 @@ bool RTPSenderVideo::SendVideo(
                          rtp_timestamp);
   return true;
 }
-
+/**
+ * 主要完成：
+ * 1.检查是否有帧变换器，则对帧进行变换，完成后被异步发送；
+ * 2.调用SendVideo开始对image进行rtp组包；
+ */
 bool RTPSenderVideo::SendEncodedImage(
     int payload_type,
     absl::optional<VideoCodecType> codec_type,

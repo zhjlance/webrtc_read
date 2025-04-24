@@ -254,6 +254,7 @@ class MediaChannel : public sigslot::has_slots<> {
   // Base method to send packet using NetworkInterface.
   bool SendPacket(rtc::CopyOnWriteBuffer* packet,
                   const rtc::PacketOptions& options) {
+    // 继续转发
     return DoSendPacket(packet, false, options);
   }
 
@@ -335,7 +336,8 @@ class MediaChannel : public sigslot::has_slots<> {
     rtc::CritScope cs(&network_interface_crit_);
     if (!network_interface_)
       return false;
-
+    // 根据rtp还是rtcp类型进行转发
+    // rtp包来到的是BaseChannel::SendPacket
     return (!rtcp) ? network_interface_->SendPacket(packet, options)
                    : network_interface_->SendRtcp(packet, options);
   }

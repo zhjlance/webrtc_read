@@ -111,6 +111,7 @@ JsepTransportController::~JsepTransportController() {
 RTCError JsepTransportController::SetLocalDescription(
     SdpType type,
     const cricket::SessionDescription* description) {
+  // 检查当前线程是否为neitwork_thread，如果不是，通过Invoke<>()将当前函数投递到network_thread中执行
   if (!network_thread_->IsCurrent()) {
     return network_thread_->Invoke<RTCError>(
         RTC_FROM_HERE, [=] { return SetLocalDescription(type, description); });

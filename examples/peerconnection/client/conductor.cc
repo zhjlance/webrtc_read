@@ -75,6 +75,7 @@ class CapturerTrackSource : public webrtc::VideoTrackSource {
     const size_t kHeight = 480;
     const size_t kFps = 30;
     std::unique_ptr<webrtc::test::VcmCapturer> capturer;
+    // 获取所有的视频捕获设备
     std::unique_ptr<webrtc::VideoCaptureModule::DeviceInfo> info(
         webrtc::VideoCaptureFactory::CreateDeviceInfo());
     if (!info) {
@@ -82,9 +83,11 @@ class CapturerTrackSource : public webrtc::VideoTrackSource {
     }
     int num_devices = info->NumberOfDevices();
     for (int i = 0; i < num_devices; ++i) {
+      // 创建一个VcmCapturer， VcmCapturer继承了VideoSinkInterface
       capturer = absl::WrapUnique(
           webrtc::test::VcmCapturer::Create(kWidth, kHeight, kFps, i));
       if (capturer) {
+        // 使用video capturer创建一个CapturerTrackSource
         return new rtc::RefCountedObject<CapturerTrackSource>(
             std::move(capturer));
       }
@@ -99,6 +102,7 @@ class CapturerTrackSource : public webrtc::VideoTrackSource {
       : VideoTrackSource(/*remote=*/false), capturer_(std::move(capturer)) {}
 
  private:
+  // 提供源
   rtc::VideoSourceInterface<webrtc::VideoFrame>* source() override {
     return capturer_.get();
   }
@@ -146,7 +150,8 @@ bool Conductor::InitializePeerConnection() {
     return false;
   }
 
-  if (!CreatePeerConnection(/*dtls=*/true)) {
+  // if (!CreatePeerConnection(/*dtls=*/true)) { // dtls加密
+  if (!CreatePeerConnection(/*dtls=*/false)) { // dtls不加密
     main_wnd_->MessageBox("Error", "CreatePeerConnection failed", true);
     DeletePeerConnection();
   }
@@ -411,7 +416,9 @@ void Conductor::DisconnectFromServer() {
   if (client_->is_connected())
     client_->SignOut();
 }
-
+/**
+ * 点击界面的Connect按钮会走到这儿
+ */
 void Conductor::ConnectToPeer(int peer_id) {
   RTC_DCHECK(peer_id_ == -1);
   RTC_DCHECK(peer_id != -1);
@@ -430,7 +437,9 @@ void Conductor::ConnectToPeer(int peer_id) {
     main_wnd_->MessageBox("Error", "Failed to initialize PeerConnection", true);
   }
 }
-
+/**
+ * 添加音视频Track
+ */
 void Conductor::AddTracks() {
   if (!peer_connection_->GetSenders().empty()) {
     return;  // Already added tracks.
@@ -449,10 +458,11 @@ void Conductor::AddTracks() {
   rtc::scoped_refptr<CapturerTrackSource> video_device =
       CapturerTrackSource::Create();
   if (video_device) {
+    // 创建视频Track
     rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track_(
         peer_connection_factory_->CreateVideoTrack(kVideoLabel, video_device));
     main_wnd_->StartLocalRenderer(video_track_);
-
+    // 创建音频Track
     result_or_error = peer_connection_->AddTrack(video_track_, {kStreamId});
     if (!result_or_error.ok()) {
       RTC_LOG(LS_ERROR) << "Failed to add video track to PeerConnection: "

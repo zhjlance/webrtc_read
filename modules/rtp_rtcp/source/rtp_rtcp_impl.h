@@ -41,7 +41,14 @@ namespace webrtc {
 class Clock;
 struct PacedPacketInfo;
 struct RTPVideoHeader;
-
+/**
+ * RTP/RTCP数据的处理
+ * 
+ * ModuleRtpRtcpImpl2内部含有rtp_sender, rtcp_sender_, rtcp_receiver_, 相当于rtp/rtcp的收发功能聚合在一起，
+ * 同时提供了一些SendNack()等这样的功能；而TrySendPacket()中使用的rtp_sender_对象是
+ * ModuleRtpRtcpImpl2::RtpSenderContext类型, 该类型内部有之前用来生成RTP包的RTPSender packet_generator;
+ * 还有此处调用来发包的RtpSenderEgress packet_sender;
+ */
 class ModuleRtpRtcpImpl : public RtpRtcp, public RTCPReceiver::ModuleRtpRtcp {
  public:
   explicit ModuleRtpRtcpImpl(const RtpRtcp::Configuration& configuration);

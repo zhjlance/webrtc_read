@@ -27,7 +27,11 @@
 #include "rtc_base/constructor_magic.h"
 
 namespace webrtc {
-
+/**
+ * 作用：用于解析 RTP 数据包，提取其中的 H.264 数据。
+ * 它会根据 RTP 头信息和 H.264 的 RTP 封装规范，将 RTP 数据包中的 H.264 数据解包出来，
+ * 恢复成 NAL 单元的形式，供后续的视频解码使用。
+ */
 class RtpPacketizerH264 : public RtpPacketizer {
  public:
   // Initialize with payload from encoder.

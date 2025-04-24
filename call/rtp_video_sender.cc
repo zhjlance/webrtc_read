@@ -474,14 +474,21 @@ bool RtpVideoSender::IsActive() {
   rtc::CritScope lock(&crit_);
   return active_ && !rtp_streams_.empty();
 }
-
+/**
+ * 处理编码帧
+ */
 EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
     const EncodedImage& encoded_image,
     const CodecSpecificInfo* codec_specific_info,
     const RTPFragmentationHeader* fragmentation) {
+  // fec_controller在分配的网络容量下，计算多少用于编码，多少用于fec和nack，
+  // 根据image的size和type更新fec_controller
   fec_controller_->UpdateWithEncodedData(encoded_image.size(),
                                          encoded_image._frameType);
   rtc::CritScope lock(&crit_);
+  // 注意rtp_streams_这个变量，其是RtpVideoSender下的一个类型为RtpStreamSender的数组，
+  // 其以simulcast index去标识每一个simulcast stream；
+  // RtpStreamSender有三个成员变量:rtp_rtcp(rtp\rtcp 打包、接收、发送), sender_video(pacer 发送), fec_generator(fec)
   RTC_DCHECK(!rtp_streams_.empty());
   if (!active_)
     return Result(Result::ERROR_SEND_FAILED);
@@ -493,6 +500,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
        codec_specific_info->codecType == kVideoCodecH264 ||
        codec_specific_info->codecType == kVideoCodecGeneric)) {
     // Map spatial index to simulcast.
+    // webrtc内使用spatial_index 作为simulcast id
     stream_index = encoded_image.SpatialIndex().value_or(0);
   }
   RTC_DCHECK_LT(stream_index, rtp_streams_.size());
@@ -505,6 +513,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
   // RTCPSender::BuildSR, hence we must not add the in the offset for this call.
   // TODO(nisse): Delete RTCPSender:timestamp_offset_, and see if we can confine
   // knowledge of the offset to a single place.
+  // 检测是否要给该stream发送rtcp report
   if (!rtp_streams_[stream_index].rtp_rtcp->OnSendingRtpFrame(
           encoded_image.Timestamp(), encoded_image.capture_time_ms_,
           rtp_config_.payload_type,
@@ -518,7 +527,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
     expected_retransmission_time_ms =
         rtp_streams_[stream_index].rtp_rtcp->ExpectedRetransmissionTimeMs();
   }
-
+  // 解析编码帧携带有帧依赖信息，可在后续rtp扩展头中使用（关键帧）
   if (encoded_image._frameType == VideoFrameType::kVideoFrameKey) {
     // If encoder adapter produce FrameDependencyStructure, pass it so that
     // dependency descriptor rtp header extension can be used.
@@ -528,7 +537,7 @@ EncodedImageCallback::Result RtpVideoSender::OnEncodedImage(
             ? &*codec_specific_info->template_structure
             : nullptr);
   }
-
+  // 发送视频帧
   bool send_result = rtp_streams_[stream_index].sender_video->SendEncodedImage(
       rtp_config_.payload_type, codec_type_, rtp_timestamp, encoded_image,
       fragmentation,

@@ -42,6 +42,7 @@ std::unique_ptr<RtpPacketizer> RtpPacketizer::Create(
       RTC_CHECK(fragmentation);
       const auto& h264 =
           absl::get<RTPVideoHeaderH264>(rtp_video_header.video_type_header);
+      // 创建H.264 RTP depacketizer
       return std::make_unique<RtpPacketizerH264>(
           payload, limits, h264.packetization_mode, *fragmentation);
     }

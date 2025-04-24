@@ -395,6 +395,7 @@ VCMFrameBufferEnum VCMJitterBuffer::InsertPacket(const VCMPacket& packet,
 
   VCMFrameBuffer* frame;
   FrameList* frame_list;
+  // 获取视频帧
   const VCMFrameBufferEnum error = GetFrame(packet, &frame, &frame_list);
   if (error != kNoError)
     return error;
@@ -763,6 +764,7 @@ void VCMJitterBuffer::DropPacketsFromNackList(
 
 VCMFrameBuffer* VCMJitterBuffer::GetEmptyFrame() {
   if (free_frames_.empty()) {
+    // 尝试扩大Jitter Buffer
     if (!TryToIncreaseJitterBufferSize()) {
       return NULL;
     }

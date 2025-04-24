@@ -115,9 +115,11 @@ void PacedSender::EnqueuePackets(
   {
     rtc::CritScope cs(&critsect_);
     for (auto& packet : packets) {
+      // packet实际上被投递到pacing_controller_的发送队列中
       pacing_controller_.EnqueuePacket(std::move(packet));
     }
   }
+  // 唤醒处理线程
   MaybeWakupProcessThread();
 }
 
@@ -167,7 +169,9 @@ int64_t PacedSender::TimeUntilNextProcess() {
   }
   return sleep_time.ms();
 }
-
+/**
+ * wakeup后最后触发的回调，处理逻辑转到了pacing_controller
+ */
 void PacedSender::Process() {
   rtc::CritScope cs(&critsect_);
   pacing_controller_.ProcessPackets();
@@ -177,7 +181,11 @@ void PacedSender::ProcessThreadAttached(ProcessThread* process_thread) {
   RTC_LOG(LS_INFO) << "ProcessThreadAttached 0x" << process_thread;
   RTC_DCHECK(!process_thread || process_thread == process_thread_);
 }
-
+/**
+ * 开始唤醒：
+ * RtpPacket被投递到paced_controller_的发送队列后，
+ * 会执行PacedSender::MaybeWakupProcessThread()唤醒处理线程调用注册的process()去处理发送队列:
+ */
 void PacedSender::MaybeWakupProcessThread() {
   // Tell the process thread to call our TimeUntilNextProcess() method to get
   // a new time for when to call Process().

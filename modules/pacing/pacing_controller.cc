@@ -332,12 +332,23 @@ TimeDelta PacingController::UpdateTimeAndGetElapsed(Timestamp now) {
   }
   return elapsed_time;
 }
-
+/**
+ * 使用ShouldSendKeepalive()检查是否需要发送keepalive包, 
+ * 判定的依据如下，如果需要则构造一个1Bytes的包发送。
+ * 
+ * 1.根据发送队列大小和packet能在队列存放的时间计算一个目标发送码率target_rate；
+ * 2.从带宽探测器prober_中获取当前的探测码率，具体的prober原理可参考此篇
+ * （https://blog.csdn.net/qq_22658119/article/details/119242152）, 
+ *  通过发送包簇的发送码率和接受码率是否出现差值判断是否达到链路最大容量；
+ * 3.循环扫发送队列，将队列的包通过packet_sender->SendPacket()进行发送，
+ *   并通过packet_sender->FetchFec()获取已发送包的fec包，进行发送
+ */
 bool PacingController::ShouldSendKeepalive(Timestamp now) const {
   if (send_padding_if_silent_ || paused_ || Congested() ||
       packet_counter_ == 0) {
     // We send a padding packet every 500 ms to ensure we won't get stuck in
     // congested state due to no feedback being received.
+    // 没有feedback过来就处于congested状态，则每500ms就会有一个keepalive探测包
     TimeDelta elapsed_since_last_send = now - last_send_time_;
     if (elapsed_since_last_send >= kCongestedPacketInterval) {
       return true;
@@ -405,7 +416,15 @@ Timestamp PacingController::NextSendTime() const {
   }
   return last_process_time_ + kPausedProcessInterval;
 }
-// 周期发送数据包
+/**
+ * 周期发送数据包:
+ * ProcessPackets() 中会从发送队列取包进行转发，其中增添了很多逻辑，用于带宽探测和发送速率控制,
+ * 
+ * 1.使用budget进行发送码率控制，budget会随着时间流逝而增长，随着发送而减小，budget在内部的维护上，
+ *   又根据ProcessPackets()是被固定周期调用(ProcessMode::kPeriodic)使用media_budget_，还是
+ *   被动态调用(ProcessMode::kDynamic) 则使用media_debt_维护;(动态目前没有人用)
+ * 2.在入口使用UpdateBudgetWithElapsedTime()函数通过流逝的时间更新发送budget
+ * */
 void PacingController::ProcessPackets() {
   Timestamp now = CurrentTime();
   Timestamp target_send_time = now;
@@ -437,7 +456,7 @@ void PacingController::ProcessPackets() {
 
   Timestamp previous_process_time = last_process_time_;
   TimeDelta elapsed_time = UpdateTimeAndGetElapsed(now);
-
+  // 检查是否需要发送keepalive包
   if (ShouldSendKeepalive(now)) {
     // We can not send padding unless a normal packet has first been sent. If
     // we do, timestamps get messed up.

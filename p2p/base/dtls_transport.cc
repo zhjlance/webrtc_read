@@ -390,12 +390,17 @@ bool DtlsTransport::GetSslVersionBytes(int* version) const {
 }
 
 // Called from upper layers to send a media packet.
+/**
+ * DTLS层传输
+ */
 int DtlsTransport::SendPacket(const char* data,
                               size_t size,
                               const rtc::PacketOptions& options,
                               int flags) {
   if (!dtls_active_) {
     // Not doing DTLS.
+    // 不做DTLS的走这儿（比如本机环回测试）
+    // 走这儿：P2PTransportChannel::SendPacket
     return ice_transport_->SendPacket(data, size, options);
   }
 

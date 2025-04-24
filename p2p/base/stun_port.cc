@@ -290,7 +290,7 @@ Connection* UDPPort::CreateConnection(const Candidate& address,
   AddOrReplaceConnection(conn);
   return conn;
 }
-
+// 最终通过这儿发送出去
 int UDPPort::SendTo(const void* data,
                     size_t size,
                     const rtc::SocketAddress& addr,

@@ -99,7 +99,7 @@ class BitrateProber {
   };
 
   // A probe cluster consists of a set of probes. Each probe in turn can be
-  // divided into a number of packets to accommodate the MTU on the network.
+  // divided into a number of packets to accommoPacingControllerdate the MTU on the network.
   // 一个探测簇由一组探测组成。每个探测又可以拆分成多个数据包，以适应网络上的 MTU。
   struct ProbeCluster {
     PacedPacketInfo pace_info;

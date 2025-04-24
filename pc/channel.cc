@@ -303,7 +303,9 @@ bool BaseChannel::IsReadyToSendMedia_n() const {
          webrtc::RtpTransceiverDirectionHasSend(local_content_direction_) &&
          was_ever_writable();
 }
-
+/**
+ * 最终发包会走到这儿
+ */
 bool BaseChannel::SendPacket(rtc::CopyOnWriteBuffer* packet,
                              const rtc::PacketOptions& options) {
   return SendPacket(false, packet, options);
@@ -370,7 +372,10 @@ void BaseChannel::OnTransportReadyToSend(bool ready) {
   invoker_.AsyncInvoke<void>(RTC_FROM_HERE, worker_thread_,
                              [=] { media_channel_->OnReadyToSend(ready); });
 }
-
+/**
+ * 1.其首先会做线程检查，当前不是network线程则将任务重投；
+ * 2.然后使用rtp_transport_->SendRtpPacket()转发包，其类型为webrtc::SrtpTransport
+ */
 bool BaseChannel::SendPacket(bool rtcp,
                              rtc::CopyOnWriteBuffer* packet,
                              const rtc::PacketOptions& options) {
@@ -383,6 +388,7 @@ bool BaseChannel::SendPacket(bool rtcp,
   // SRTP and the inner workings of the transport channels.
   // The only downside is that we can't return a proper failure code if
   // needed. Since UDP is unreliable anyway, this should be a non-issue.
+  // 线程检查
   if (!network_thread_->IsCurrent()) {
     // Avoid a copy by transferring the ownership of the packet data.
     int message_id = rtcp ? MSG_SEND_RTCP_PACKET : MSG_SEND_RTP_PACKET;
@@ -434,6 +440,7 @@ bool BaseChannel::SendPacket(bool rtcp,
   }
 
   // Bon voyage.
+  // 最终通过bool SrtpTransport::SendRtpPacket发送出去
   return rtcp ? rtp_transport_->SendRtcpPacket(packet, options, PF_SRTP_BYPASS)
               : rtp_transport_->SendRtpPacket(packet, options, PF_SRTP_BYPASS);
 }

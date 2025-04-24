@@ -115,7 +115,10 @@ RTCError SrtpTransport::SetSrtpReceiveKey(const cricket::CryptoParams& params) {
   recv_params_ = params;
   return RTCError::OK();
 }
-
+/**
+ * 1.对数据执行ProtectRtp()进行加密;
+ * 2.调用SendPacket()将包转发到RtpTransport去转发
+ */
 bool SrtpTransport::SendRtpPacket(rtc::CopyOnWriteBuffer* packet,
                                   const rtc::PacketOptions& options,
                                   int flags) {
@@ -135,6 +138,7 @@ bool SrtpTransport::SendRtpPacket(rtc::CopyOnWriteBuffer* packet,
 // Socket layer will update rtp sendtime extension header if present in
 // packet with current time before updating the HMAC.
 #if !defined(ENABLE_EXTERNAL_AUTH)
+  // 加密数据
   res = ProtectRtp(data, len, static_cast<int>(packet->capacity()), &len);
 #else
   if (!IsExternalAuthActive()) {
@@ -171,6 +175,7 @@ bool SrtpTransport::SendRtpPacket(rtc::CopyOnWriteBuffer* packet,
 
   // Update the length of the packet now that we've added the auth tag.
   packet->SetSize(len);
+  // 会走到 RtpTransport::SendPacket
   return SendPacket(/*rtcp=*/false, packet, updated_options, flags);
 }
 

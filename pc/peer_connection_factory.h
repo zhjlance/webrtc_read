@@ -32,7 +32,21 @@ class BasicPacketSocketFactory;
 namespace webrtc {
 
 class RtcEventLog;
-
+/**
+ * PeerConnectionFactory提供的能力并不太多，重要的有以下几点：
+ *  1、创建PeerConnection：CreatePeerConnection();
+ *  2、创建音频源：CreateAudioSource()，为创建音频Track提供参数；
+ *  3、创建视频轨：CreateVideoTrack()；
+ *  4、创建音频轨：CreateAudioTrack()；
+ *  5、获取ChannelManager：channel_manager()；
+ *  
+ * 其他的不太常用：
+ * 1、获取发送的媒体类型相关的RTP能力RtpCapabilities：GetRtpSenderCapabilities(); 
+ *    这些能力包含对应媒体所支持的编解码器类型，RTP头扩展以及支持的前向纠错算法FEC。
+ * 2、获取接收的媒体类型星官的RTP能力RtpCapabilities：GetRtpReceiverCapabilities();
+ * 3、创建媒体流：CreateLocalMediaStream()，目前C++层很少使用MediaStream，一般都是直接使用AudioTrack和VideoTrack。
+ * 4、dump前向纠错包到文件：StartAecDump() && StopAecDump();
+ */
 class PeerConnectionFactory : public PeerConnectionFactoryInterface {
  public:
   void SetOptions(const Options& options) override;
@@ -54,7 +68,7 @@ class PeerConnectionFactory : public PeerConnectionFactoryInterface {
 
   RtpCapabilities GetRtpReceiverCapabilities(
       cricket::MediaType kind) const override;
-
+  // 现在C++层很少使用MediaStream，都是直接使用AudioTrack或者VideoTrack
   rtc::scoped_refptr<MediaStreamInterface> CreateLocalMediaStream(
       const std::string& stream_id) override;
 

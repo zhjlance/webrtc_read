@@ -19,6 +19,10 @@ namespace rtc {
 // Computes units per second over a given interval by tracking the units over
 // each bucket of a given size and calculating the instantaneous rate assuming
 // that over each bucket the rate was constant.
+/**
+ * 通过跟踪给定大小的每个 bucket 中的单位数，计算给定时间间隔内的每秒单位数，
+ * 并计算瞬时速率（假设每个 bucket 中的速率为常数）。
+ */
 class RateTracker {
  public:
   RateTracker(int64_t bucket_milliseconds, size_t bucket_count);

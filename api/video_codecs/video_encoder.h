@@ -80,7 +80,9 @@ class EncodedImageCallback {
 
   virtual void OnDroppedFrame(DropReason reason) {}
 };
-
+/**
+ * 视频编码类
+ */
 class RTC_EXPORT VideoEncoder {
  public:
   struct QpThresholds {

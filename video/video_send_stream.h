@@ -48,6 +48,9 @@ class VideoSendStreamImpl;
 // Internally, it delegates all public methods to VideoSendStreamImpl and / or
 // VideoStreamEncoder. VideoSendStreamInternal is created and deleted on
 // |worker_queue|.
+/**
+ * 在这儿被调用的：webrtc::VideoSendStream* Call::CreateVideoSendStream
+ */
 class VideoSendStream : public webrtc::VideoSendStream {
  public:
   using RtpStateMap = std::map<uint32_t, RtpState>;

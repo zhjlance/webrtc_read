@@ -133,7 +133,17 @@ void PacketRouter::RemoveReceiveRtpModule(
   RTC_DCHECK(it != rtcp_feedback_senders_.end());
   rtcp_feedback_senders_.erase(it);
 }
-
+/**
+ * Rtp Packet 经过转发到了PacketRouter::SendPacket()中
+ * 
+ * 主要做了三件事:
+ * 1.如果设置transport suquence number 的Rtp Extension，则将该sequence number填入；
+ * 2.PacketRouter会根据当前包的ssrc对应的ModuleRtpRtcpImpl2(开启了simulcast后，
+ *   每一个simulcast都有独立的ModuleRtpRtcpImpl2), 然后调用ModuleRtpRtcpImpl2::TrySendPacket()进行发包；
+ * 3.将发送过程中产生的fec包取出暂存到pending_fec_packets_中，等待外部获取，决定是否投递发送
+ * 
+ * 备注：目前这份代码只有ModuleRtpRtcpImpl没有ModuleRtpRtcpImpl2
+ */
 void PacketRouter::SendPacket(std::unique_ptr<RtpPacketToSend> packet,
                               const PacedPacketInfo& cluster_info) {
   rtc::CritScope cs(&modules_crit_);

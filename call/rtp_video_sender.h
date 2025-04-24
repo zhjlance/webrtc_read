@@ -59,9 +59,9 @@ struct RtpStreamSender {
   RtpStreamSender& operator=(RtpStreamSender&&) = default;
 
   // Note: Needs pointer stability.
-  std::unique_ptr<RtpRtcp> rtp_rtcp;
-  std::unique_ptr<RTPSenderVideo> sender_video;
-  std::unique_ptr<VideoFecGenerator> fec_generator;
+  std::unique_ptr<RtpRtcp> rtp_rtcp; // rtp和rtcp的打包、发送、接收
+  std::unique_ptr<RTPSenderVideo> sender_video; // pacer发送
+  std::unique_ptr<VideoFecGenerator> fec_generator; // fec
 };
 
 }  // namespace webrtc_internal_rtp_video_sender

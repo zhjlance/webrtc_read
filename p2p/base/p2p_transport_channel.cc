@@ -1487,6 +1487,9 @@ int P2PTransportChannel::GetError() {
 }
 
 // Send data to the other side, using our selected connection.
+/**
+ * 包在ice_connection中被发送，在往下就是UDP层了
+ */
 int P2PTransportChannel::SendPacket(const char* data,
                                     size_t len,
                                     const rtc::PacketOptions& options,
@@ -1507,6 +1510,7 @@ int P2PTransportChannel::SendPacket(const char* data,
   rtc::PacketOptions modified_options(options);
   modified_options.info_signaled_after_sent.packet_type =
       rtc::PacketType::kData;
+  // 发送数据
   int sent = selected_connection_->Send(data, len, modified_options);
   if (sent <= 0) {
     RTC_DCHECK(sent < 0);
@@ -1626,6 +1630,9 @@ bool P2PTransportChannel::PresumedWritable(const Connection* conn) const {
 
 // Sort the available connections to find the best one.  We also monitor
 // the number of available connections and the current state.
+/**
+ * 从众多连接中找到最佳的（数据来的时候，首先就会走到这儿）
+ */
 void P2PTransportChannel::SortConnectionsAndUpdateState(
     IceControllerEvent reason_to_sort) {
   RTC_DCHECK_RUN_ON(network_thread_);
@@ -1670,6 +1677,7 @@ void P2PTransportChannel::SortConnectionsAndUpdateState(
   }
 
   // Update the state of this channel.
+  // 1.更新channel的状态
   UpdateState();
 
   // Also possibly start pinging.
@@ -1779,6 +1787,7 @@ void P2PTransportChannel::UpdateState() {
   bool writable =
       selected_connection_ && (selected_connection_->writable() ||
                                PresumedWritable(selected_connection_));
+  // 走到这儿
   SetWritable(writable);
 
   bool receiving = false;

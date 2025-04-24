@@ -55,7 +55,9 @@ enum RetransmissionMode : uint8_t {
   kRetransmitAllLayers = 0x6,
   kConditionallyRetransmitHigherLayers = 0x8
 };
-
+/**
+ * RtpSenderVideo主要是根据video_header生成rtp packet, 然后将rtp packet转发给pacer进行发送
+ */
 class RTPSenderVideo {
  public:
   static constexpr int64_t kTLRateWindowSizeMs = 2500;

@@ -53,6 +53,9 @@ namespace webrtc {
 //  Call SetSource.
 //  Call ConfigureEncoder with the codec settings.
 //  Call Stop() when done.
+/**
+ * 负责视频编码的类，其从媒体源获取视频帧然后进行编码
+ */
 class VideoStreamEncoder : public VideoStreamEncoderInterface,
                            private EncodedImageCallback,
                            public ResourceAdaptationProcessorListener {
@@ -64,10 +67,10 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
                      std::unique_ptr<OveruseFrameDetector> overuse_detector,
                      TaskQueueFactory* task_queue_factory);
   ~VideoStreamEncoder() override;
-
+  // 设置好媒体源
   void SetSource(rtc::VideoSourceInterface<VideoFrame>* source,
                  const DegradationPreference& degradation_preference) override;
-
+  // 设置好外来的事件接收槽
   void SetSink(EncoderSink* sink, bool rotation_applied) override;
 
   // TODO(perkj): Can we remove VideoCodec.startBitrate ?
@@ -78,12 +81,13 @@ class VideoStreamEncoder : public VideoStreamEncoderInterface,
 
   void SetFecControllerOverride(
       FecControllerOverride* fec_controller_override) override;
-
+  // 设置编码器
   void ConfigureEncoder(VideoEncoderConfig config,
                         size_t max_data_payload_length) override;
 
   // Permanently stop encoding. After this method has returned, it is
   // guaranteed that no encoded frames will be delivered to the sink.
+  // 结束的时候使用stop
   void Stop() override;
 
   void SendKeyFrame() override;

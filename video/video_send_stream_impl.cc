@@ -401,7 +401,9 @@ void VideoSendStreamImpl::SignalEncoderTimedOut() {
     bitrate_allocator_->RemoveObserver(this);
   }
 }
-
+/**
+ * 码率分配已经变化的回调
+ */
 void VideoSendStreamImpl::OnBitrateAllocationUpdated(
     const VideoBitrateAllocation& allocation) {
   if (!worker_queue_->IsCurrent()) {
@@ -423,6 +425,8 @@ void VideoSendStreamImpl::OnBitrateAllocationUpdated(
       // the previously sent allocation and the same streams are still enabled,
       // it is considered "similar". We do not want send similar allocations
       // more once per kMaxVbaThrottleTimeMs.
+      // 如果allocation处于previously allocation + kMaxVbaSizeDifferencePercent 区间
+      // 则被当作similar，认为一个kMaxVbaThrottleTimeMs不更新
       const VideoBitrateAllocation& last =
           video_bitrate_allocation_context_->last_sent_allocation;
       const bool is_similar =
@@ -447,6 +451,7 @@ void VideoSendStreamImpl::OnBitrateAllocationUpdated(
     video_bitrate_allocation_context_->last_send_time_ms = now_ms;
 
     // Send bitrate allocation metadata only if encoder is not paused.
+    // 告知给下层的观察者
     rtp_video_sender_->OnBitrateAllocationUpdated(allocation);
   }
 }
@@ -542,7 +547,12 @@ void VideoSendStreamImpl::OnEncoderConfigurationChanged(
     bitrate_allocator_->AddObserver(this, GetAllocationConfig());
   }
 }
-
+/**
+ * 编码器的出帧回调：
+ * 1.启用enable_padding，通知编码器中的码率分配器，让其做码率分配的时候把padding也考虑上；
+ * 2.将编好的帧和相关信息转到RtpVideoSender处理；
+ * 3.检查码率分配是否已经改变，通知下层
+ */
 EncodedImageCallback::Result VideoSendStreamImpl::OnEncodedImage(
     const EncodedImage& encoded_image,
     const CodecSpecificInfo* codec_specific_info,
@@ -567,7 +577,7 @@ EncodedImageCallback::Result VideoSendStreamImpl::OnEncodedImage(
   } else {
     enable_padding_task();
   }
-
+  // 将image发送给RtpVideoSender
   EncodedImageCallback::Result result(EncodedImageCallback::Result::OK);
   result = rtp_video_sender_->OnEncodedImage(encoded_image, codec_specific_info,
                                              fragmentation);
@@ -579,6 +589,7 @@ EncodedImageCallback::Result VideoSendStreamImpl::OnEncodedImage(
       RTC_DCHECK_RUN_ON(send_stream->worker_queue_);
       auto& context = send_stream->video_bitrate_allocation_context_;
       if (context && context->throttled_allocation) {
+        // 告知相关观察者，分配码率的变化
         send_stream->OnBitrateAllocationUpdated(*context->throttled_allocation);
       }
     }

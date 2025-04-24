@@ -784,7 +784,10 @@ webrtc::VideoSendStream* Call::CreateVideoSendStream(
 
   return send_stream;
 }
-
+/**
+ * 创建 VideoSendStream,
+ * 在这儿调用 call_->CreateVideoSendStream
+ */
 webrtc::VideoSendStream* Call::CreateVideoSendStream(
     webrtc::VideoSendStream::Config config,
     VideoEncoderConfig encoder_config) {
