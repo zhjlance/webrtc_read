@@ -1886,6 +1886,7 @@ PeerConnection::CreateSender(
     RTC_DCHECK_EQ(media_type, cricket::MEDIA_TYPE_VIDEO);
     RTC_DCHECK(!track ||
                (track->kind() == MediaStreamTrackInterface::kVideoKind));
+    // 创建视频的Sender
     sender = RtpSenderProxyWithInternal<RtpSenderInternal>::Create(
         signaling_thread(), VideoRtpSender::Create(worker_thread(), id, this));
     NoteUsageEvent(UsageEvent::VIDEO_ADDED);
@@ -1910,6 +1911,7 @@ PeerConnection::CreateReceiver(cricket::MediaType media_type,
   } else {
     RTC_DCHECK_EQ(media_type, cricket::MEDIA_TYPE_VIDEO);
     receiver = RtpReceiverProxyWithInternal<RtpReceiverInternal>::Create(
+      // 创建视频的Receiver
         signaling_thread(), new VideoRtpReceiver(worker_thread(), receiver_id,
                                                  std::vector<std::string>({})));
     NoteUsageEvent(UsageEvent::VIDEO_ADDED);
@@ -3524,7 +3526,8 @@ void PeerConnection::RemoveRemoteStreamsIfEmpty(
 }
 
 /**
- * 根据新的会话描述（SessionDescriptionInterface）来更新 PeerConnection 中的收发器（Transceiver）和数据通道（DataChannel）
+ * 根据新的会话描述（SessionDescriptionInterface）来更新 PeerConnection 中的收发器（Transceiver）
+ * 和数据通道（DataChannel）
  * 
  * @param source：内容源，用于标识更新的来源。
  * @param new_session：新的会话描述，包含了更新后的媒体和连接信息。
@@ -3567,6 +3570,7 @@ RTCError PeerConnection::UpdateTransceiversAndDataChannels(
         old_remote_content =
             &old_remote_description->description()->contents()[i];
       }
+      // 关联transceiver（优先去现有的找，找不到则去创建transceiver和sender、receiver）
       auto transceiver_or_error =
           AssociateTransceiver(source, new_session.GetType(), i, new_content,
                                old_local_content, old_remote_content);
@@ -3759,19 +3763,42 @@ static RTCError DisableSimulcastInSender(
   return sender->DisableEncodingLayers(disabled_layers);
 }
 
+/**
+ * 函数主要用于在 WebRTC 的统一计划（Unified Plan）模式下，根据本地或远程的媒体描述（ContentInfo）
+ * 来关联或创建 RtpTransceiver，并处理与媒体流复用、 simulcast（多码率分层传输）相关的逻辑。它确保
+ * 了 PeerConnection 能够正确地管理媒体流的收发，以及处理不同情况下媒体描述的变化。
+ * 主要职责：
+ * 1、媒体段(m=)回收检测与处理
+ * 2、跨信令阶段的Transceiver关联维护
+ * 3、动态Transceiver创建与配置
+ * 4、Simulcast/SVC等高级功能的状态同步
+ * 
+ * 总结本质作用：
+ * 1、SDP到Transceiver的映射桥梁：
+ *    维护MID(index)->Transceiver的双向绑定关系；
+ * 2、媒体协商的最终执行者：
+ *    将SDP中的a=sendrecv等属性转化为具体Transceiver行为；
+ * 3、WebRTC媒体管线一致性的守护者：
+ *    确保每次SDP变更后传输通道与编码器的正确匹配
+ * 4、渐进式资源分配的决策点：
+ *    按需创建RecvOnly Transceiver以节省资源
+ */
 RTCErrorOr<rtc::scoped_refptr<RtpTransceiverProxyWithInternal<RtpTransceiver>>>
-PeerConnection::AssociateTransceiver(cricket::ContentSource source,
-                                     SdpType type,
-                                     size_t mline_index,
-                                     const ContentInfo& content,
-                                     const ContentInfo* old_local_content,
-                                     const ContentInfo* old_remote_content) {
+PeerConnection::AssociateTransceiver(cricket::ContentSource source, // 表示内容源，本地/远端
+                                     SdpType type, // SDP类型，Offer或者Answer
+                                     size_t mline_index, // SDP 中媒体行（m= 行）的索引，用于标识特定的媒体描述
+                                     const ContentInfo& content, // 新的媒体描述信息
+                                     const ContentInfo* old_local_content, // 旧的本地媒体描述信息（如果存在）
+                                     const ContentInfo* old_remote_content) { // 旧的远程媒体描述信息（如果存在）
   RTC_DCHECK(IsUnifiedPlan());
   // If this is an offer then the m= section might be recycled. If the m=
   // section is being recycled (defined as: rejected in the current local or
   // remote description and not rejected in new description), dissociate the
   // currently associated RtpTransceiver by setting its mid property to null,
   // and discard the mapping between the transceiver and its m= section index.
+  // 1. 媒体段回收处理（关键防御性设计）
+  // 触发场景：当SDP中的m=节从rejected状态变为active
+  // 危险操作防御：防止旧的Transceiver错误关联到新媒体流
   if (IsMediaSectionBeingRecycled(type, content, old_local_content,
                                   old_remote_content)) {
     // We want to dissociate the transceiver that has the rejected mid.
@@ -3787,6 +3814,9 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
       old_transceiver->internal()->set_mline_index(absl::nullopt);
     }
   }
+  // 2. Transceiver查找策略：
+  // 本地描述(CS_LOCAL)：通过mline_index查找（严格校验匹配性）
+  // 远端描述(CS_REMOTE)：根据媒体类型/方向查找（自动创建recv-only Transceiver）
   const MediaContentDescription* media_desc = content.media_description();
   auto transceiver = GetAssociatedTransceiver(content.name);
   if (source == cricket::CS_LOCAL) {
@@ -3794,6 +3824,7 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
     // mapping between transceivers and m= section indices established when
     // creating the offer.
     if (!transceiver) {
+      // 通过m行找一个Transceiver出来
       transceiver = GetTransceiverByMLineIndex(mline_index);
     }
     if (!transceiver) {
@@ -3813,6 +3844,7 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
     }
     // If no RtpTransceiver was found in the previous step, create one with a
     // recvonly direction.
+    // 3. 上面没有找到Transceiver, 动态创建Transceiver
     if (!transceiver) {
       RTC_LOG(LS_INFO) << "Adding "
                        << cricket::MediaTypeToString(media_desc->type())
@@ -3820,6 +3852,8 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
                        << " at i=" << mline_index
                        << " in response to the remote description.";
       std::string sender_id = rtc::CreateRandomUuid();
+      // 如果还是未找到，则创建一个新的 RtpTransceiver，方向设为 recvonly。
+      // 同时创建相应的 RtpSender 和 RtpReceiver，并添加到 PeerConnection 中
       std::vector<RtpEncodingParameters> send_encodings =
           GetSendEncodingsFromRemoteDescription(*media_desc);
       auto sender = CreateSender(media_desc->type(), sender_id, nullptr, {},
@@ -3841,8 +3875,10 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
     }
     // Check if the offer indicated simulcast but the answer rejected it.
     // This can happen when simulcast is not supported on the remote party.
+    // 4. Simulcast协商处理
     if (SimulcastIsRejected(old_local_content, *media_desc)) {
-      RTC_HISTOGRAM_BOOLEAN(kSimulcastDisabled, true);
+      RTC_HISTOGRAM_BOOLEAN(kSimulcastDisabled, true); // simulcast被拒统计 
+      // 关闭被拒绝的simulcast
       RTCError error =
           DisableSimulcastInSender(transceiver->internal()->sender_internal());
       if (!error.ok()) {
@@ -3851,6 +3887,10 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
       }
     }
   }
+  // 类型检查与 simulcast 处理：
+  // 1、检查找到或创建的 RtpTransceiver 的媒体类型是否与媒体描述的类型匹配，
+  //    如果不匹配则返回 INVALID_PARAMETER 错误。
+  // 2、如果媒体描述包含 simulcast，根据内容源更新发送端的 simulcast 层状态。
   RTC_DCHECK(transceiver);
   if (transceiver->media_type() != media_desc->type()) {
     LOG_AND_RETURN_ERROR(
@@ -3871,6 +3911,10 @@ PeerConnection::AssociateTransceiver(cricket::ContentSource source,
       return std::move(error);
     }
   }
+  // 状态更新与关联：
+  // 1、如果是 SdpType::kOffer，检查 RtpTransceiver 的 mid 和 mline_index 是否发生变化，如果变化则更新相关状态。
+  // 2、最后，将找到或创建的 RtpTransceiver 与当前媒体描述（m= 部分）相关联，通过设置 RtpTransceiver 的 mid 属性
+  //    为媒体描述的 MID，并建立收发器与 m= 部分索引的映射。
   if (type == SdpType::kOffer) {
     bool state_changes = transceiver->internal()->mid() != content.name ||
                          transceiver->internal()->mline_index() != mline_index;

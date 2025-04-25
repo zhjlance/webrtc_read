@@ -27,6 +27,11 @@ namespace webrtc {
 // The subclass of SrtpTransport is used for DTLS-SRTP. When the DTLS handshake
 // is finished, it extracts the keying materials from DtlsTransport and
 // configures the SrtpSessions in the base class.
+/**
+ * 作用：在 SrtpTransport 基础上，自动完成 DTLS 握手，协商 SRTP 密钥，并进行 SRTP 加解密。
+ * 特点：实现了 DTLS-SRTP 的完整流程（握手、密钥协商、加解密）。
+ * 用途：这是 WebRTC 实际部署中最常用的传输层，实现了端到端的安全传输。
+ */
 class DtlsSrtpTransport : public SrtpTransport {
  public:
   explicit DtlsSrtpTransport(bool rtcp_mux_enabled);

@@ -34,6 +34,11 @@ namespace webrtc {
 // This subclass of the RtpTransport is used for SRTP which is reponsible for
 // protecting/unprotecting the packets. It provides interfaces to set the crypto
 // parameters for the SrtpSession underneath.
+/**
+ * 作用：在 RtpTransport 基础上增加了 SRTP（安全RTP）加解密功能。
+ * 特点：负责 RTP/RTCP 包的加密与解密，但不负责密钥协商（需要外部提供密钥）。
+ * 用途：当你已经有了 SRTP 密钥（比如通过其他方式协商），可以用它来加解密 RTP/RTCP 流。
+ */
 class SrtpTransport : public RtpTransport {
  public:
   explicit SrtpTransport(bool rtcp_mux_enabled);

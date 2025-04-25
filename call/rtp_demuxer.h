@@ -96,6 +96,7 @@ class RtpDemuxer {
   // Maximum number of unique SSRC bindings allowed. This limit is to prevent
   // memory overuse attacks due to a malicious peer sending many packets with
   // different SSRCs.
+  // 唯一ssrc允许的最大绑定数量。防止使用不对ssrc向对端发送数据包攻击
   static constexpr int kMaxSsrcBindings = 1000;
 
   // Returns a string that contains all the attributes of the given packet

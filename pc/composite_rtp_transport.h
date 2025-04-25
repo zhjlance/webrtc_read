@@ -36,6 +36,12 @@ namespace webrtc {
 // When a full answer is received, the user should replace the composite
 // transport with the single, chosen RTP transport, then delete the composite
 // and all non-chosen transports.
+/**
+ * CompositeRtpTransport 是 WebRTC 中典型的**组合模式（Composite Pattern）**实现，
+ * 用于统一管理多个底层 RtpTransportInternal 实例的行为。其核心价值在于：
+ * 1、多层传输通道的统一抽象：将多个物理传输通道虚拟化为单一逻辑通道；
+ * 2、动态传输路径切换：支持运行时切换发送路径（如ICE候选切换）
+ */
 class CompositeRtpTransport : public RtpTransportInternal {
  public:
   // Constructs a composite out of the given |transports|.  |transports| must

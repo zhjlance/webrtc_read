@@ -92,6 +92,13 @@ class JsepTransport : public sigslot::has_slots<> {
   // |mid| is just used for log statements in order to identify the Transport.
   // Note that |local_certificate| is allowed to be null since a remote
   // description may be set before a local certificate is generated.
+  /**
+   * JsepTransport 是 WebRTC 中媒体流与网络传输的协调中枢，作为 JsepTransportController 的管理单元，
+   * 负责单个媒体流（如音频/视频）的端到端传输通道生命周期管理。
+   * 
+   * 职责：
+   * 封装底层 DtlsSrtpTransport 和 RtpTransport，向上提供统一接口。
+   */
   JsepTransport(
       const std::string& mid,
       const rtc::scoped_refptr<rtc::RTCCertificate>& local_certificate,

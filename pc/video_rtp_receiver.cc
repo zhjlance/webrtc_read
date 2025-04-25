@@ -46,7 +46,7 @@ VideoRtpReceiver::VideoRtpReceiver(
       track_(VideoTrackProxy::Create(
           rtc::Thread::Current(),
           worker_thread,
-          VideoTrack::Create(
+          VideoTrack::Create( // 创建videoTrack
               receiver_id,
               VideoTrackSourceProxy::Create(rtc::Thread::Current(),
                                             worker_thread,

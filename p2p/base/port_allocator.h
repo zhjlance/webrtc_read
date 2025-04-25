@@ -332,6 +332,12 @@ class RTC_EXPORT PortAllocatorSession : public sigslot::has_slots<> {
 //
 // This allows a PortAllocator subclass to be constructed and configured on one
 // thread, and passed into an object that uses it on a different thread.
+/**
+ * PortAllocator 是 WebRTC ICE 协议栈中的传输通道资源管理中心，负责：
+ * 1、管理网络候选地址（Candidate）的发现与分配
+ * 2、协调 STUN/TURN 服务的访问
+ * 3、实现候选地址池化（Candidate Pooling）优化
+ */
 class RTC_EXPORT PortAllocator : public sigslot::has_slots<> {
  public:
   PortAllocator();

@@ -27,7 +27,11 @@ class PacketTransportInternal;
 }  // namespace rtc
 
 namespace webrtc {
-
+/**
+ * 作用：负责 RTP（实时传输协议）/RTCP（RTP控制协议）包的收发。
+ * 特点：它处理纯净的 RTP/RTCP 数据，不涉及加密（SRTP）或安全协商（DTLS）。
+ * 用途：最基础的传输层，适用于纯净环境或测试用途。
+ */
 class RtpTransport : public RtpTransportInternal {
  public:
   RtpTransport(const RtpTransport&) = delete;
