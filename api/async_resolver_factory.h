@@ -15,6 +15,17 @@
 
 namespace webrtc {
 
+/**
+ * AsyncResolverFactory类是一个抽象工厂，用于创建异步DNS解析器(AsyncResolverInterface)。
+ * 核心功能：
+ * 1、解耦DNS解析实现：
+ *    1）允许客户端应用自定义DNS解析机制替代WebRTC默认实现；
+ *    2）适用于需要特殊网络配置的场景（如代理、自定义DNS服务器等）；
+ * 
+ * 2、工厂模式应用：
+ *    1）通过纯虚函数Create()强制子类实现具体的解析器创建逻辑；
+ *    2）生命周期由调用者控制（需显式调用Destroy销毁对象）；
+ */
 // An abstract factory for creating AsyncResolverInterfaces. This allows
 // client applications to provide WebRTC with their own mechanism for
 // performing DNS resolution.

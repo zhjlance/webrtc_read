@@ -14,7 +14,7 @@
 #include "rtc_base/checks.h"
 
 namespace rtc {
-
+// 此接口用于原始帧渲染/处理
 template <typename VideoFrameT>
 class VideoSinkInterface {
  public:

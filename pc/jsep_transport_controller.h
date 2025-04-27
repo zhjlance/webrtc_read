@@ -44,7 +44,9 @@ class PacketTransportInternal;
 }  // namespace rtc
 
 namespace webrtc {
-
+/**
+ * 主类，负责管理传输相关的操作，它提供了获取和创建 RtpTransport 等关键功能的框架。
+ */
 class JsepTransportController : public sigslot::has_slots<> {
  public:
   // Used when the RtpTransport/DtlsTransport of the m= section is changed
@@ -73,7 +75,10 @@ class JsepTransportController : public sigslot::has_slots<> {
         rtc::scoped_refptr<DtlsTransport> dtls_transport,
         DataChannelTransportInterface* data_channel_transport) = 0;
   };
-
+  /**
+   * 用于配置 JsepTransportController 的行为。虽然部分配置与 ICE、加解密和协商相关，
+   * 但也有一些对于简单 RTP/RTCP 传输有用的设置。例如，rtcp_handler 用于处理 RTCP 数据包，
+   */
   struct Config {
     // If |redetermine_role_on_ice_restart| is true, ICE role is redetermined
     // upon setting a local transport description that indicates an ICE
@@ -97,7 +102,7 @@ class JsepTransportController : public sigslot::has_slots<> {
     // JsepTransportController instance.
     std::function<void(const rtc::CopyOnWriteBuffer& packet,
                        int64_t packet_time_us)>
-        rtcp_handler;
+        rtcp_handler; // RTCP包处理的回调，用于接收原始的RTCP数据
     bool active_reset_srtp_params = false;
     RtcEventLog* event_log = nullptr;
 
@@ -106,6 +111,7 @@ class JsepTransportController : public sigslot::has_slots<> {
 
     // Whether an RtpMediaTransport should be created as default, when no
     // MediaTransportFactory is provided.
+    // 是否使用实验性RtpMediaTransport（默认false）
     bool use_rtp_media_transport = false;
 
     // Use encrypted datagram transport to send packets.
@@ -127,6 +133,7 @@ class JsepTransportController : public sigslot::has_slots<> {
     // of RTP is determined by |use_datagram_transport|. Note that currently
     // datagram_transport co-exists with RTP / RTCP transports and may use the
     // same underlying ICE transport.
+    // 可选参数，用于创建DatagramTransport（实验性功能）
     MediaTransportFactory* media_transport_factory = nullptr;
   };
 

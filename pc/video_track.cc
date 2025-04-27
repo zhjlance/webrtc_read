@@ -40,6 +40,7 @@ std::string VideoTrack::kind() const {
 
 // AddOrUpdateSink and RemoveSink should be called on the worker
 // thread.
+// WebRTC内置渲染管线
 void VideoTrack::AddOrUpdateSink(rtc::VideoSinkInterface<VideoFrame>* sink,
                                  const rtc::VideoSinkWants& wants) {
   RTC_DCHECK(worker_thread_->IsCurrent());

@@ -25,7 +25,9 @@
 namespace rtc {
 struct PacketOptions;
 struct SentPacket;
-
+/**
+ * 底层网络传输接口
+ */
 class RTC_EXPORT PacketTransportInternal : public sigslot::has_slots<> {
  public:
   virtual const std::string& transport_name() const = 0;
